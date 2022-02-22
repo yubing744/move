@@ -102,6 +102,7 @@ pub trait MoveTestAdapter<'a> {
     fn compiled_state(&mut self) -> &mut CompiledState<'a>;
     fn default_syntax(&self) -> SyntaxChoice;
     fn init(
+        test_path: &Path,
         default_syntax: SyntaxChoice,
         option: Option<&'a FullyCompiledProgram>,
         init_data: Option<TaskInput<(InitCommand, Self::ExtraInitArgs)>>,
@@ -214,6 +215,11 @@ pub trait MoveTestAdapter<'a> {
                         let (unit, warnings_opt) = compile_source_unit(
                             state.pre_compiled_deps,
                             state.named_address_mapping.clone(),
+                            state
+                                .compiled_module_named_address_mapping
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.as_str().to_string()))
+                                .collect(),
                             &state.interface_files().cloned().collect::<Vec<_>>(),
                             data_path.to_owned(),
                         )?;
@@ -268,6 +274,11 @@ pub trait MoveTestAdapter<'a> {
                         let (unit, warning_opt) = compile_source_unit(
                             state.pre_compiled_deps,
                             state.named_address_mapping.clone(),
+                            state
+                                .compiled_module_named_address_mapping
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.as_str().to_string()))
+                                .collect(),
                             &state.interface_files().cloned().collect::<Vec<_>>(),
                             data_path.to_owned(),
                         )?;
@@ -395,7 +406,26 @@ impl<'a> CompiledState<'a> {
             .values()
             .map(|pmod| &pmod.interface_file.as_ref().unwrap().0)
     }
-
+    pub fn add_named_addresses(
+        &mut self,
+        addresses: BTreeMap<impl Into<Symbol>, NumericalAddress>,
+    ) -> Result<()> {
+        let mut named_address_mapping = addresses
+            .into_iter()
+            .map(|(k, v)| (k.into(), v))
+            .collect::<BTreeMap<_, _>>();
+        for (k, _) in &named_address_mapping {
+            if self.named_address_mapping.contains_key(k) {
+                anyhow::bail!("name {} already assigned", k);
+            }
+        }
+        self.named_address_mapping
+            .append(&mut named_address_mapping);
+        Ok(())
+    }
+    pub fn contain_name_address(&self, k: impl Into<Symbol>) -> bool {
+        self.named_address_mapping.contains_key(&k.into())
+    }
     pub fn add(&mut self, named_addr_opt: Option<Symbol>, module: CompiledModule) {
         let id = module.self_id();
         if let Some(named_addr) = named_addr_opt {
@@ -414,6 +444,7 @@ impl<'a> CompiledState<'a> {
 fn compile_source_unit(
     pre_compiled_deps: Option<&FullyCompiledProgram>,
     named_address_mapping: BTreeMap<Symbol, NumericalAddress>,
+    compiled_module_named_address_mapping: BTreeMap<ModuleId, String>,
     deps: &[String],
     path: String,
 ) -> Result<(AnnotatedCompiledUnit, Option<String>)> {
@@ -434,6 +465,7 @@ fn compile_source_unit(
     let (mut files, comments_and_compiler_res) = move_compiler::Compiler::new(&[path], deps)
         .set_pre_compiled_lib_opt(pre_compiled_deps)
         .set_named_address_values(named_address_mapping)
+        .set_compiled_module_named_address_mapping(compiled_module_named_address_mapping)
         .run::<PASS_COMPILATION>()?;
     let units_or_diags = comments_and_compiler_res
         .map(|(_comments, move_compiler)| move_compiler.into_compiled_units());
@@ -531,7 +563,7 @@ where
             None
         }
     };
-    let mut adapter = Adapter::init(default_syntax, fully_compiled_program_opt, init_opt);
+    let mut adapter = Adapter::init(path, default_syntax, fully_compiled_program_opt, init_opt);
     for task in tasks {
         handle_known_task(&mut output, &mut adapter, task);
     }

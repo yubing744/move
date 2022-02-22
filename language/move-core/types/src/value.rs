@@ -52,7 +52,7 @@ pub enum MoveValue {
 }
 
 /// A layout associated with a named field
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MoveFieldLayout {
     name: Identifier,
     layout: MoveTypeLayout,
@@ -64,7 +64,7 @@ impl MoveFieldLayout {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MoveStructLayout {
     /// The representation used by the MoveVM
     Runtime(Vec<MoveTypeLayout>),
@@ -77,7 +77,7 @@ pub enum MoveStructLayout {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MoveTypeLayout {
     #[serde(rename = "bool")]
     Bool,
