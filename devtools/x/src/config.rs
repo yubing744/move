@@ -1,8 +1,9 @@
 // Copyright (c) The Diem Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{utils::project_root, Result};
+use crate::Result;
 use anyhow::Context;
+use camino::Utf8Path;
 use determinator::rules::DeterminatorRules;
 use guppy::graph::summaries::CargoOptionsSummary;
 use serde::{Deserialize, Serialize};
@@ -207,8 +208,8 @@ impl XConfig {
         toml::from_slice(bytes).map_err(Into::into)
     }
 
-    pub fn from_project_root() -> Result<Self> {
-        Self::from_file(project_root().join("x.toml"))
+    pub fn from_project_root(project_root: &'static Utf8Path) -> Result<Self> {
+        Self::from_file(project_root.join("x.toml"))
     }
 }
 
