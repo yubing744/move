@@ -1,27 +1,39 @@
 // Copyright (c) The Diem Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use clap::Parser;
 use codespan_reporting::diagnostic::Severity;
-use move_command_line_common::env::read_env_var;
-use structopt::StructOpt;
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "move-to-yul", about = "Move Solidity Generator")]
+/// Options for a run of the compiler.
+#[derive(Parser, Debug)]
+#[clap(name = "move-to-yul", about = "Move Solidity Generator")]
 pub struct Options {
     /// Directories where to lookup dependencies.
-    #[structopt(short)]
+    #[clap(
+        short,
+        takes_value(true),
+        multiple_values(true),
+        multiple_occurrences(true)
+    )]
     pub dependencies: Vec<String>,
     /// Named address mapping.
-    #[structopt(short)]
+    #[clap(
+        short,
+        takes_value(true),
+        multiple_values(true),
+        multiple_occurrences(true)
+    )]
     pub named_address_mapping: Vec<String>,
-    /// Output file
-    #[structopt(short)]
+    /// Output file name.
+    #[clap(short)]
+    #[clap(long, default_value = "output.yul")]
     pub output: String,
     /// Solc executable
-    #[structopt(long)]
+    #[clap(long, env = "SOLC_EXE", default_value = "solc")]
+
     pub solc_exe: String,
     /// Whether to dump bytecode to a file.
-    #[structopt(long = "dump-bytecode")]
+    #[clap(long = "dump-bytecode")]
     pub dump_bytecode: bool,
     /// Sources to compile (positional arg)
     pub sources: Vec<String>,
@@ -29,14 +41,7 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Self {
-            dependencies: vec![],
-            named_address_mapping: vec![],
-            output: "output.yul".to_string(),
-            solc_exe: read_env_var("SOLC_EXE"),
-            dump_bytecode: false,
-            sources: vec![],
-        }
+        Parser::parse_from(std::iter::empty::<String>())
     }
 }
 
