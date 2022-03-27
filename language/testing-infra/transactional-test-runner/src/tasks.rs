@@ -306,10 +306,10 @@ pub struct ViewCommand {
 
 #[derive(Debug)]
 pub enum TaskCommand<
-    ExtraInitArgs: Parser,
-    ExtraPublishArgs: Parser,
-    ExtraRunArgs: Parser,
-    SubCommands: Parser,
+    ExtraInitArgs: clap::Args,
+    ExtraPublishArgs: clap::Args,
+    ExtraRunArgs: clap::Args,
+    SubCommands: clap::Args,
 > {
     Init(InitCommand, ExtraInitArgs),
     PrintBytecode(PrintBytecodeCommand),
@@ -320,10 +320,10 @@ pub enum TaskCommand<
 }
 
 impl<
-        ExtraInitArgs: Parser,
-        ExtraPublishArgs: Parser,
-        ExtraRunArgs: Parser,
-        SubCommands: Parser,
+        ExtraInitArgs: clap::Args,
+        ExtraPublishArgs: clap::Args,
+        ExtraRunArgs: clap::Args,
+        SubCommands: clap::Args,
     > FromArgMatches for TaskCommand<ExtraInitArgs, ExtraPublishArgs, ExtraRunArgs, SubCommands>
 {
     fn from_arg_matches(matches: &ArgMatches) -> Result<Self, Error> {
@@ -357,19 +357,26 @@ impl<
 }
 
 impl<
-        ExtraInitArgs: Parser,
-        ExtraPublishArgs: Parser,
-        ExtraRunArgs: Parser,
-        SubCommands: Parser,
+        ExtraInitArgs: clap::Args,
+        ExtraPublishArgs: clap::Args,
+        ExtraRunArgs: clap::Args,
+        SubCommands: clap::Args,
     > CommandFactory for TaskCommand<ExtraInitArgs, ExtraPublishArgs, ExtraRunArgs, SubCommands>
 {
     fn into_app<'help>() -> Command<'help> {
-        clap::Command::new("Task Command")
-            .subcommand(InitCommand::command().name("init"))
+        let command = clap::Command::new("Task Command")
+            .subcommand(ExtraInitArgs::augment_args(
+                InitCommand::command().name("init"),
+            ))
             .subcommand(PrintBytecodeCommand::command().name("print-bytecode"))
-            .subcommand(PublishCommand::command().name("publish"))
-            .subcommand(RunCommand::command().name("run"))
-            .subcommand(ViewCommand::command().name("view"))
+            .subcommand(ExtraPublishArgs::augment_args(
+                PublishCommand::command().name("publish"),
+            ))
+            .subcommand(ExtraRunArgs::augment_args(
+                RunCommand::command().name("run"),
+            ))
+            .subcommand(ViewCommand::command().name("view"));
+        SubCommands::augment_args(command)
     }
 
     fn into_app_for_update<'help>() -> Command<'help> {
@@ -383,10 +390,10 @@ impl<
 // (`cargo expand` is useful in printing out the derived code.)
 //
 impl<
-        ExtraInitArgs: Parser,
-        ExtraPublishArgs: Parser,
-        ExtraRunArgs: Parser,
-        SubCommands: Parser,
+        ExtraInitArgs: clap::Args,
+        ExtraPublishArgs: clap::Args,
+        ExtraRunArgs: clap::Args,
+        SubCommands: clap::Args,
     > Parser for TaskCommand<ExtraInitArgs, ExtraPublishArgs, ExtraRunArgs, SubCommands>
 {
 }
