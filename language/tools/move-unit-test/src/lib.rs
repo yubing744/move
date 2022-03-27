@@ -5,6 +5,7 @@ pub mod cargo_runner;
 pub mod test_reporter;
 pub mod test_runner;
 use crate::test_runner::TestRunner;
+use clap::Parser;
 use move_compiler::{
     self,
     diagnostics::{self, codes::Severity},

@@ -30,7 +30,6 @@ pub struct Options {
     pub output: String,
     /// Solc executable
     #[clap(long, env = "SOLC_EXE", default_value = "solc")]
-
     pub solc_exe: String,
     /// Whether to dump bytecode to a file.
     #[clap(long = "dump-bytecode")]

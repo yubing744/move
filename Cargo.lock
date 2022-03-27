@@ -4920,7 +4920,7 @@ version = "1.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ee73e6e4924fe940354b8d4d98cad5231175d615cd855b758adc658c0aac6a0"
 dependencies = [
- "cfg-if 1.0.0",
+ "cfg-if 0.1.10",
  "static_assertions",
 ]
 
@@ -5323,17 +5323,23 @@ dependencies = [
  "bstr",
  "byteorder",
  "bytes",
+ "chrono",
+ "clap 2.34.0",
+ "clap 3.1.6",
  "codespan-reporting",
  "crossbeam-utils",
- "crunchy",
- "getrandom 0.2.5",
+ "indexmap",
  "libc",
  "log",
  "memchr",
+ "num-integer",
  "num-traits 0.2.14",
+ "phf_shared",
  "plotters",
  "proc-macro2 0.4.30",
+ "proc-macro2 1.0.36",
  "quote 0.6.13",
+ "rand 0.8.5",
  "rand_core 0.5.1",
  "regex",
  "regex-automata",
@@ -5341,8 +5347,8 @@ dependencies = [
  "serde 1.0.136",
  "syn 0.15.44",
  "syn 1.0.89",
- "tiny-keccak",
  "tracing-core",
+ "url",
 ]
 
 [[package]]

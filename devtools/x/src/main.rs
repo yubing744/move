@@ -11,6 +11,7 @@ use clap::Parser;
 use env_logger::{self, fmt::Color};
 use log::Level;
 use std::{boxed::Box, io::Write};
+use x::*;
 
 type Result<T> = anyhow::Result<T>;
 

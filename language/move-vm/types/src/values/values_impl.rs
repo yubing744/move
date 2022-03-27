@@ -2433,8 +2433,7 @@ pub mod debug {
  *   is to involve an explicit representation of the type layout.
  *
  **************************************************************************************/
-use crate::loaded_data::runtime_types::Type;
-use crate::natives::function::NativeResult;
+use crate::{loaded_data::runtime_types::Type, natives::function::NativeResult};
 use move_core_types::gas_schedule::InternalGasUnits;
 use serde::{
     de::Error as DeError,

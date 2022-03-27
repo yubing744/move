@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+use clap::Parser;
 use move_compiler::{
     command_line::{self as cli},
     shared::{self, verify_and_create_named_address_mapping, Flags, NumericalAddress},
