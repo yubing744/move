@@ -137,24 +137,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "better_any"
-version = "0.1.1"
+name = "bech32"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b359aebd937c17c725e19efcb661200883f04c49c53e7132224dac26da39d4a0"
-dependencies = [
- "better_typeid_derive",
-]
-
-[[package]]
-name = "better_typeid_derive"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3deeecb812ca5300b7d3f66f730cc2ebd3511c3d36c691dd79c165d5b19a26e3"
-dependencies = [
- "proc-macro2 1.0.28",
- "quote 1.0.9",
- "syn 1.0.74",
-]
+checksum = "cf9ff0bbfd639f15c74af777d81383cf53efb7c93613f6cab67c6c11e05bbf8b"
 
 [[package]]
 name = "bit-set"
@@ -245,6 +231,12 @@ name = "block-padding"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
+
+[[package]]
+name = "bs58"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "771fe0050b883fcc3ea2359b1a96bcfbc090b7116eae7c3c512c7a083fdf23d3"
 
 [[package]]
 name = "bstr"
@@ -781,6 +773,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "data-encoding"
+version = "2.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
+
+[[package]]
 name = "datatest-stable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -928,6 +926,12 @@ dependencies = [
  "os_pipe",
  "shared_child",
 ]
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21e50f3adc76d6a43f5ed73b698a87d0760ca74617f60f7c3b879003536fdd28"
 
 [[package]]
 name = "ed25519"
@@ -1079,7 +1083,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "evm",
- "evm-runtime",
  "hex",
  "move-command-line-common",
  "primitive-types",
@@ -1895,28 +1898,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "move-async-vm"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bcs",
- "better_any",
- "datatest-stable",
- "itertools 0.10.1",
- "move-binary-format",
- "move-command-line-common",
- "move-compiler",
- "move-core-types",
- "move-prover-test-utils",
- "move-stdlib",
- "move-vm-runtime",
- "move-vm-types",
- "sha3 0.9.1",
- "smallvec",
- "walkdir",
-]
-
-[[package]]
 name = "move-binary-format"
 version = "0.0.3"
 dependencies = [
@@ -2022,7 +2003,6 @@ dependencies = [
  "move-resource-viewer",
  "move-stdlib",
  "move-symbol-pool",
- "move-table-extension",
  "move-unit-test",
  "move-vm-runtime",
  "move-vm-types",
@@ -2072,7 +2052,6 @@ dependencies = [
  "once_cell",
  "petgraph 0.5.1",
  "regex",
- "sha3 0.9.1",
  "tempfile",
  "walkdir",
 ]
@@ -2091,6 +2070,7 @@ version = "0.0.3"
 dependencies = [
  "anyhow",
  "bcs",
+ "bech32",
  "hex",
  "mirai-annotations",
  "once_cell",
@@ -2099,6 +2079,7 @@ dependencies = [
  "rand 0.8.4",
  "ref-cast",
  "regex",
+ "schemars",
  "serde 1.0.130",
  "serde_bytes",
  "serde_json",
@@ -2292,8 +2273,6 @@ dependencies = [
  "clap 3.1.8",
  "colored",
  "datatest-stable",
- "evm-exec-utils",
- "hex",
  "move-abigen",
  "move-binary-format",
  "move-bytecode-source-map",
@@ -2304,7 +2283,6 @@ dependencies = [
  "move-docgen",
  "move-model",
  "move-symbol-pool",
- "move-to-yul",
  "named-lock",
  "once_cell",
  "petgraph 0.5.1",
@@ -2314,7 +2292,6 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tempfile",
- "termcolor",
  "toml",
  "walkdir",
 ]
@@ -2464,6 +2441,7 @@ dependencies = [
  "move-model",
  "move-prover-test-utils",
  "move-stackless-bytecode",
+ "move-vm-runtime",
  "num 0.4.0",
  "serde 1.0.130",
 ]
@@ -2501,27 +2479,6 @@ dependencies = [
  "once_cell",
  "serde 1.0.130",
  "serde_json",
-]
-
-[[package]]
-name = "move-table-extension"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bcs",
- "better_any",
- "move-binary-format",
- "move-cli",
- "move-core-types",
- "move-package",
- "move-stdlib",
- "move-unit-test",
- "move-vm-runtime",
- "move-vm-types",
- "once_cell",
- "sha3 0.9.1",
- "smallvec",
- "tempfile",
 ]
 
 [[package]]
@@ -2604,31 +2561,21 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap 3.1.8",
- "codespan-reporting",
  "colored",
  "datatest-stable",
  "difference",
- "evm",
- "evm-exec-utils",
- "itertools 0.10.1",
  "move-binary-format",
  "move-bytecode-utils",
  "move-command-line-common",
  "move-compiler",
  "move-core-types",
- "move-ir-types",
  "move-model",
  "move-resource-viewer",
  "move-stackless-bytecode-interpreter",
  "move-stdlib",
- "move-symbol-pool",
- "move-table-extension",
- "move-to-yul",
  "move-vm-runtime",
  "move-vm-test-utils",
  "move-vm-types",
- "once_cell",
- "primitive-types",
  "rayon",
  "regex",
 ]
@@ -2642,7 +2589,6 @@ dependencies = [
  "move-compiler",
  "move-core-types",
  "move-stdlib",
- "move-table-extension",
  "move-vm-runtime",
  "move-vm-test-utils",
  "move-vm-types",
@@ -2654,7 +2600,6 @@ name = "move-vm-runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "better_any",
  "fail",
  "hex",
  "mirai-annotations",
@@ -2676,8 +2621,9 @@ name = "move-vm-test-utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "move-binary-format",
  "move-core-types",
- "move-table-extension",
+ "move-vm-runtime",
 ]
 
 [[package]]
@@ -2700,6 +2646,49 @@ dependencies = [
  "proptest",
  "serde 1.0.130",
  "smallvec",
+]
+
+[[package]]
+name = "multiaddr"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48ee4ea82141951ac6379f964f71b20876d43712bea8faf6dd1a375e08a46499"
+dependencies = [
+ "arrayref",
+ "bs58",
+ "byteorder",
+ "data-encoding",
+ "multihash",
+ "percent-encoding",
+ "serde 1.0.130",
+ "static_assertions",
+ "unsigned-varint",
+ "url",
+]
+
+[[package]]
+name = "multihash"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "752a61cd890ff691b4411423d23816d5866dd5621e4d1c5687a53b94b5a979d8"
+dependencies = [
+ "generic-array 0.14.4",
+ "multihash-derive",
+ "unsigned-varint",
+]
+
+[[package]]
+name = "multihash-derive"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "424f6e86263cd5294cbd7f1e95746b95aca0e0d66bff31e5a40d6baa87b4aa99"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro-error",
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.74",
+ "synstructure",
 ]
 
 [[package]]
@@ -3865,6 +3854,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemars"
+version = "0.8.8"
+source = "git+https://github.com/starcoinorg/schemars?rev=6972da92f4360e1779168bb3fe0274c521d324e2#6972da92f4360e1779168bb3fe0274c521d324e2"
+dependencies = [
+ "dyn-clone",
+ "multiaddr",
+ "schemars_derive",
+ "serde 1.0.130",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.8.8"
+source = "git+https://github.com/starcoinorg/schemars?rev=6972da92f4360e1779168bb3fe0274c521d324e2#6972da92f4360e1779168bb3fe0274c521d324e2"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "serde_derive_internals",
+ "syn 1.0.74",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3966,6 +3978,17 @@ name = "serde_derive"
 version = "1.0.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7bc1a1ab1961464eae040d96713baa5a724a8152c1222492465b54322ec508b"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.74",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dbab34ca63057a1f15280bdf3c39f2b1eb1b54c17e98360e511637aef7418c6"
 dependencies = [
  "proc-macro2 1.0.28",
  "quote 1.0.9",
@@ -4788,6 +4811,12 @@ name = "unindent"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f14ee04d9415b52b3aeab06258a3f07093182b88ba0f9b8d203f211a7a7d41c7"
+
+[[package]]
+name = "unsigned-varint"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d86a8dc7f45e4c1b0d30e43038c38f274e77af056aa5f74b93c2cf9eb3c1c836"
 
 [[package]]
 name = "url"
