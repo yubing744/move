@@ -1832,12 +1832,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mirai-annotations"
-version = "1.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9be0862c1b3f26a88803c4a49de6889c10e608b3ee9344e6ef5b45fb37ad3d1"
-
-[[package]]
 name = "module-generation"
 version = "0.1.0"
 dependencies = [
@@ -1909,7 +1903,6 @@ name = "move-binary-format"
 version = "0.0.3"
 dependencies = [
  "anyhow",
- "mirai-annotations",
  "move-core-types",
  "once_cell",
  "proptest",
@@ -1923,9 +1916,6 @@ dependencies = [
 [[package]]
 name = "move-borrow-graph"
 version = "0.0.1"
-dependencies = [
- "mirai-annotations",
-]
 
 [[package]]
 name = "move-bytecode-source-map"
@@ -1958,7 +1948,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "invalid-mutations",
- "mirai-annotations",
  "move-binary-format",
  "move-borrow-graph",
  "move-core-types",
@@ -2075,12 +2064,11 @@ dependencies = [
 
 [[package]]
 name = "move-core-types"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "anyhow",
  "bcs",
  "hex",
- "mirai-annotations",
  "once_cell",
  "proptest",
  "proptest-derive",
@@ -2425,6 +2413,7 @@ dependencies = [
  "move-borrow-graph",
  "move-bytecode-verifier",
  "move-command-line-common",
+ "move-compiler",
  "move-core-types",
  "move-ir-to-bytecode",
  "move-model",
@@ -2646,7 +2635,6 @@ dependencies = [
  "better_any",
  "fail",
  "hex",
- "mirai-annotations",
  "move-binary-format",
  "move-bytecode-verifier",
  "move-compiler",
@@ -2682,7 +2670,6 @@ name = "move-vm-types"
 version = "0.1.0"
 dependencies = [
  "bcs",
- "mirai-annotations",
  "move-binary-format",
  "move-core-types",
  "once_cell",
@@ -3403,6 +3390,7 @@ dependencies = [
  "hex",
  "itertools 0.10.1",
  "log",
+ "move-compiler",
  "move-model",
  "move-prover",
  "move-stackless-bytecode",
@@ -3426,6 +3414,7 @@ dependencies = [
  "hex",
  "itertools 0.10.1",
  "log",
+ "move-compiler",
  "move-model",
  "move-prover",
  "move-stackless-bytecode",
@@ -4400,7 +4389,6 @@ dependencies = [
  "getrandom 0.2.2",
  "hex",
  "itertools 0.10.1",
- "mirai-annotations",
  "module-generation",
  "move-binary-format",
  "move-bytecode-verifier",
