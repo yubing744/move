@@ -5,7 +5,7 @@ module 0x8675309::M {
      * // block comments
      */
     fun f() { }
-
+	
     /* This is a nested /* regular comment // */ */
     fun g() {}
 

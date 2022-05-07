@@ -85,6 +85,20 @@ mod tests {
     }
 
     #[test]
+    fn test_forbidden_last_tab_characters() {
+        let mut good_chars = Vec::new();
+        good_chars.push(0x0D); // \r
+        good_chars.push(0x0A); // \n
+        good_chars.push(0x09); // \t
+        good_chars.push(0x0D); // \r
+        good_chars.push(0x0A); // \n
+
+        for idx in 0..good_chars.len() {
+            assert!(super::is_permitted_chars(&good_chars, idx));
+        }
+    }
+
+    #[test]
     fn test_forbidden_characters() {
         let mut bad_chars = (0x0..0x09).collect::<Vec<u8>>();
         bad_chars.append(&mut (0x0B..=0x1F).collect::<Vec<u8>>());
