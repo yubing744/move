@@ -18,12 +18,7 @@ pub fn is_permitted_printable_char(c: char) -> bool {
 /// The only permitted newline lf character is \n All others are invalid.
 pub fn is_permitted_newline_lf_char(c: char) -> bool {
     let x = c as u32;
-<<<<<<< HEAD
     x == 0x0A // \n
-=======
-    let is_lf = x == 0x0A; // \n
-    is_lf
->>>>>>> 788bf09b6... feat: validate crlf in source
 }
 
 /// Determine if a character is a permitted newline crlf character.
@@ -45,10 +40,6 @@ pub fn is_permitted_char(c: char) -> bool {
     is_permitted_printable_char(c) || is_permitted_newline_lf_char(c)
 }
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 788bf09b6... feat: validate crlf in source
 /// Determine if the characters is permitted characters.
 ///
 /// A permitted characters is either a permitted printable character, or a permitted
@@ -58,23 +49,14 @@ pub fn is_permitted_chars(chars: &[u8], idx: usize) -> bool {
 
     if is_permitted_char(c1) {
         return true;
-<<<<<<< HEAD
     }
-=======
-    } 
->>>>>>> 788bf09b6... feat: validate crlf in source
 
     if idx + 1 >= chars.len() {
         return false;
     }
 
-<<<<<<< HEAD
     let c2 = chars[idx + 1] as char;
     is_permitted_newline_crlf_chars(c1, c2)
-=======
-    let c2 = chars[idx+1] as char;
-    return is_permitted_newline_crlf_chars(c1, c2);
->>>>>>> 788bf09b6... feat: validate crlf in source
 }
 
 #[cfg(test)]
@@ -107,9 +89,9 @@ mod tests {
         let mut bad_chars = (0x0..0x09).collect::<Vec<u8>>();
         bad_chars.append(&mut (0x0B..=0x1F).collect::<Vec<u8>>());
         bad_chars.push(0x7F);
+        
         for idx in 0..bad_chars.len() {
             assert!(!super::is_permitted_chars(&bad_chars, idx));
         }
     }
 }
- 
