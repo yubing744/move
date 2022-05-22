@@ -3,4 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod cli;
+
+#[cfg(feature = "no_web")]
 pub mod prover;

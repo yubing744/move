@@ -5,8 +5,13 @@
 use move_package::BuildConfig;
 
 pub mod base;
+
+#[cfg(feature = "no_web")]
 pub mod experimental;
+
 pub mod package;
+
+#[cfg(feature = "no_web")]
 pub mod sandbox;
 
 /// Default directory where saved Move resources live
@@ -74,6 +79,7 @@ pub enum Command {
     },
     /// Execute a sandbox command.
     #[clap(name = "sandbox")]
+    #[cfg(feature = "no_web")]
     Sandbox {
         /// Directory storing Move resources, events, and module bytecodes produced by module publishing
         /// and script execution.
@@ -84,6 +90,7 @@ pub enum Command {
     },
     /// (Experimental) Run static analyses on Move source or bytecode.
     #[clap(name = "experimental")]
+    #[cfg(feature = "no_web")]
     Experimental {
         /// Directory storing Move resources, events, and module bytecodes produced by module publishing
         /// and script execution.
@@ -95,13 +102,14 @@ pub enum Command {
 }
 
 pub fn run_cli(
-    natives: Vec<NativeFunctionRecord>,
-    cost_table: &CostTable,
-    error_descriptions: &ErrorMapping,
+    #[cfg(feature = "no_web")] natives: Vec<NativeFunctionRecord>,
+    #[cfg(feature = "no_web")] cost_table: &CostTable,
+    #[cfg(feature = "no_web")] error_descriptions: &ErrorMapping,
     move_args: &Move,
     cmd: &Command,
 ) -> Result<()> {
     match cmd {
+        #[cfg(feature = "no_web")]
         Command::Sandbox { storage_dir, cmd } => cmd.handle_command(
             natives,
             cost_table,
@@ -109,26 +117,28 @@ pub fn run_cli(
             move_args,
             storage_dir,
         ),
+        #[cfg(feature = "no_web")]
         Command::Experimental { storage_dir, cmd } => cmd.handle_command(move_args, storage_dir),
         Command::Package { cmd } => package::cli::handle_package_commands(
             &move_args.package_path,
             move_args.build_config.clone(),
             cmd,
-            natives,
+            #[cfg(feature = "no_web")] natives,
         ),
     }
 }
 
 pub fn move_cli(
-    natives: Vec<NativeFunctionRecord>,
-    cost_table: &CostTable,
-    error_descriptions: &ErrorMapping,
+    #[cfg(feature = "no_web")] natives: Vec<NativeFunctionRecord>,
+    #[cfg(feature = "no_web")] cost_table: &CostTable,
+    #[cfg(feature = "no_web")] error_descriptions: &ErrorMapping,
 ) -> Result<()> {
     let args = MoveCLI::parse();
+    
     run_cli(
-        natives,
-        cost_table,
-        error_descriptions,
+        #[cfg(feature = "no_web")] natives,
+        #[cfg(feature = "no_web")] cost_table,
+        #[cfg(feature = "no_web")] error_descriptions,
         &args.move_args,
         &args.cmd,
     )

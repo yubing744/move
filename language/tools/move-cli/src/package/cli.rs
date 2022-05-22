@@ -12,12 +12,17 @@ use std::{
 };
 
 // if windows
+#[cfg(feature = "no_web")]
 #[cfg(target_family = "windows")]
 use std::os::windows::process::ExitStatusExt;
+
 // if unix
+#[cfg(feature = "no_web")]
 #[cfg(any(target_family = "unix"))]
 use std::os::unix::prelude::ExitStatusExt;
+
 // if not windows nor unix
+#[cfg(feature = "no_web")]
 #[cfg(not(any(target_family = "windows", target_family = "unix")))]
 compile_error!("Unsupported OS, currently we only support windows and unix family");
 
@@ -44,8 +49,11 @@ use move_package::{
     source_package::layout::SourcePackageLayout,
     Architecture, ModelConfig,
 };
+
+#[cfg(feature = "no_web")]
 use move_unit_test::UnitTestingConfig;
 
+#[cfg(feature = "no_web")]
 use crate::{package::prover::run_move_prover, NativeFunctionRecord};
 
 #[derive(Parser)]
@@ -92,6 +100,7 @@ pub enum PackageCommand {
     /// Generate error map for the package and its dependencies at `path` for use by the Move
     /// explanation tool.
     #[clap(name = "errmap")]
+    #[cfg(feature = "no_web")]
     ErrMapGen {
         /// The prefix that all error reasons within modules will be prefixed with, e.g., "E" if
         /// all error reasons are "E_CANNOT_PERFORM_OPERATION", "E_CANNOT_ACCESS", etc.
@@ -104,6 +113,7 @@ pub enum PackageCommand {
     /// Run the Move Prover on the package at `path`. If no path is provided defaults to current
     /// directory. Use `.. prove .. -- <options>` to pass on options to the prover.
     #[clap(name = "prove")]
+    #[cfg(feature = "no_web")]
     Prove {
         /// The target filter used to prune the modules to verify. Modules with a name that contains
         /// this string will be part of verification.
@@ -125,6 +135,7 @@ pub enum PackageCommand {
     },
     /// Run Move unit tests in this package.
     #[clap(name = "test")]
+    #[cfg(feature = "no_web")]
     UnitTest {
         /// Bound the number of instructions that can be executed by any one test.
         #[clap(
@@ -174,6 +185,8 @@ pub enum PackageCommand {
     },
     /// Disassemble the Move bytecode pointed to
     #[clap(name = "disassemble")]
+    #[cfg(feature = "no_web")]
+    #[cfg(feature = "no_web")]
     BytecodeView {
         /// Start a disassembled bytecode-to-source explorer
         #[clap(long = "interactive")]
@@ -206,6 +219,7 @@ pub enum UnitTestResult {
     Failure,
 }
 
+#[cfg(feature = "no_web")]
 impl From<UnitTestResult> for ExitStatus {
     fn from(result: UnitTestResult) -> Self {
         match result {
@@ -280,7 +294,7 @@ pub fn handle_package_commands(
     path: &Path,
     config: move_package::BuildConfig,
     cmd: &PackageCommand,
-    natives: Vec<NativeFunctionRecord>,
+    #[cfg(feature = "no_web")] natives: Vec<NativeFunctionRecord>,
 ) -> Result<()> {
     // This is the exceptional command as it doesn't need a package to run, so we can't count on
     // being able to root ourselves.
@@ -319,6 +333,8 @@ pub fn handle_package_commands(
                 .resolution_graph_for_package(&rerooted_path)?
                 .print_info()?;
         }
+
+        #[cfg(feature = "no_web")]
         PackageCommand::BytecodeView {
             interactive,
             package_name,
@@ -364,6 +380,7 @@ pub fn handle_package_commands(
                 }
             }
         }
+        #[cfg(feature = "no_web")]
         PackageCommand::Prove {
             target_filter,
             for_test,
@@ -375,6 +392,7 @@ pub fn handle_package_commands(
                 run_move_prover(config, &rerooted_path, target_filter, *for_test, &[])?
             }
         }
+        #[cfg(feature = "no_web")]
         PackageCommand::ErrMapGen {
             error_prefix,
             output_file,
@@ -398,6 +416,7 @@ pub fn handle_package_commands(
             errmap_gen.gen();
             errmap_gen.save_result();
         }
+        #[cfg(feature = "no_web")]
         PackageCommand::UnitTest {
             instruction_execution_bound,
             filter,
@@ -450,6 +469,7 @@ pub fn handle_package_commands(
     Ok(())
 }
 
+#[cfg(feature = "no_web")]
 pub fn run_move_unit_tests(
     pkg_path: &Path,
     mut build_config: move_package::BuildConfig,

@@ -12,6 +12,5 @@ BUILD_FLAGS=
 BASE=$(git rev-parse --show-toplevel)
 echo "*************** [build-web] Assuming move root at $BASE"
 
-
 echo "build move-cli"
-cd $BASE/language/tools/move-cli && cargo +nightly build -Zbuild-std=std,panic_abort --target=wasm32-wasi --release
+cargo +nightly build -Zbuild-std=std,panic_abort --target=wasm32-wasi --release --package move-cli --no-default-features
