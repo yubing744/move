@@ -6,8 +6,11 @@ import { Configuration } from './configuration';
 import { Context } from './context';
 import { Extension } from './extension';
 import { log } from './log';
+
 import * as childProcess from 'child_process';
 import * as vscode from 'vscode';
+import * as commands from './commands';
+
 
 /**
  * An extension command that displays the version of the server that this extension
@@ -64,4 +67,5 @@ export function activate(extensionContext: Readonly<vscode.ExtensionContext>): v
 
     // All other utilities provided by this extension occur via the language server.
     context.startClient();
+    context.registerCommand('textDocumentDocumentSymbol', commands.textDocumentDocumentSymbol);
 }

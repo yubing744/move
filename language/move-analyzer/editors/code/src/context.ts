@@ -3,23 +3,69 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Configuration } from './configuration';
-import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as lc from 'vscode-languageclient';
 import { log } from './log';
+import { sync as commandExistsSync } from 'command-exists';
+
+/**
+ * The observer for ready event.
+ */
+export class OnReady {
+    private readonly _ready: Promise<void>;
+
+    private _resolve: (() => void) | undefined;
+
+    private _reject: ((reason: string) => void) | undefined;
+
+    constructor() {
+        this._ready = new Promise<void>((resolve, reject) => {
+            this._resolve = resolve;
+            this._reject = reject;
+        });
+    }
+
+    public async wait(): Promise<void> {
+        return this._ready;
+    }
+
+    public resolve(): void {
+        if (this._resolve !== undefined) {
+            this._resolve();
+        }
+    }
+
+    public reject(reason: string): void {
+        if (this._reject !== undefined) {
+            this._reject(reason);
+        }
+    }
+
+} // OnReady
 
 /** Information passed along to each VS Code command defined by this extension. */
 export class Context {
+    private _client: lc.LanguageClient | undefined;
+
+    private _symbolicatorReady: boolean;
+
+    private readonly _onSymbolicatorReadyCallbacks: Array<OnReady>;
+
     private constructor(
         private readonly extensionContext: Readonly<vscode.ExtensionContext>,
         readonly configuration: Readonly<Configuration>,
-    ) { }
+        client: lc.LanguageClient | undefined = undefined,
+    ) {
+        this._client = client;
+        this._symbolicatorReady = false;
+        this._onSymbolicatorReadyCallbacks = [];
+    }
 
     static create(
         extensionContext: Readonly<vscode.ExtensionContext>,
         configuration: Readonly<Configuration>,
     ): Context | Error {
-        if (!fs.existsSync(configuration.serverPath)) {
+        if (!commandExistsSync(configuration.serverPath)) {
             return new Error(
                 `language server executable '${configuration.serverPath}' could not be found, so ` +
                 'most extension features will be unavailable to you. Follow the instructions in ' +
@@ -39,12 +85,14 @@ export class Context {
      */
     registerCommand(
         name: Readonly<string>,
-        command: (context: Readonly<Context>) => Promise<void>,
+        command: (context: Readonly<Context>, ...args: Array<any>) => any,
     ): void {
-        const disposable = vscode.commands.registerCommand(`move-analyzer.${name}`, async () => {
-            const com = await command(this);
-            return com;
+        const disposable = vscode.commands.registerCommand(`move-analyzer.${name}`, async (...args: Array<any>)
+            : Promise<any> => {
+            const ret = await command(this, ...args);
+            return ret;
         });
+
         this.extensionContext.subscriptions.push(disposable);
     }
 
@@ -92,5 +140,59 @@ export class Context {
         log.info('Starting client...');
         const disposable = client.start();
         this.extensionContext.subscriptions.push(disposable);
+        this._client = client;
+
+        this._client.onReady().then(() => {
+            log.info('Client ready.');
+
+            client.onNotification('telemetry/event', (...params: Array<any>) => {
+                log.info('Event:' + JSON.stringify(params));
+
+                /* eslint @typescript-eslint/no-unsafe-member-access: off */
+                if (params[0] !== undefined && params[0].event_type === 'SymbolicatorEvent') {
+                    if (params[0].event_data.result === 'success') {
+                        this._resoleSymbolicatorCallbacks();
+                    } else {
+                        this._rejectSymbolicatorCallbacks(params[0].event_data.result);
+                    }
+                }
+            });
+        }, (err) => {
+            log.info(`Client failed to start: ${err}`);
+        });
     }
-}
+
+    /**
+     * Returns the client that this extension interacts with.
+     *
+     * @returns lc.LanguageClient
+     */
+    getClient(): lc.LanguageClient | undefined {
+        return this._client;
+    }
+
+    /**
+     * Returns whether the language server's symbolicator is ready to accept requests.
+     *
+     * @returns Promise<void>
+     *
+     */
+    async onSymbolicatorReady(): Promise<void> {
+        if (this._symbolicatorReady) {
+            return Promise.resolve();
+        }
+
+        const onReady = new OnReady();
+        this._onSymbolicatorReadyCallbacks.push(onReady);
+        return onReady.wait();
+    }
+
+    _resoleSymbolicatorCallbacks(): void {
+        this._symbolicatorReady = true;
+        this._onSymbolicatorReadyCallbacks.forEach(callback => callback.resolve());
+    }
+
+    _rejectSymbolicatorCallbacks(reason: string): void {
+        this._onSymbolicatorReadyCallbacks.forEach(callback => callback.reject(reason));
+    }
+} // Context
