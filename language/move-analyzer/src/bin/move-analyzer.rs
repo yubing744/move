@@ -98,6 +98,7 @@ fn main() {
             symbols::DEFS_AND_REFS_SUPPORT,
         )),
         references_provider: Some(OneOf::Left(symbols::DEFS_AND_REFS_SUPPORT)),
+        document_symbol_provider: Some(OneOf::Left(true)),
         ..Default::default()
     })
     .expect("could not serialize server capabilities");
@@ -155,7 +156,7 @@ fn main() {
             },
             recv(context.connection.receiver) -> message => {
                 match message {
-                    Ok(Message::Request(request)) => on_request(&context, &request),
+                    Ok(Message::Request(request)) => on_request(&context, &symbolicator_runner, &request),
                     Ok(Message::Response(response)) => on_response(&context, &response),
                     Ok(Message::Notification(notification)) => {
                         match notification.method.as_str() {
@@ -179,7 +180,11 @@ fn main() {
     eprintln!("Shut down language server '{}'.", exe);
 }
 
-fn on_request(context: &Context, request: &Request) {
+fn on_request(
+    context: &Context,
+    symbolicator_runner: &symbols::SymbolicatorRunner,
+    request: &Request,
+) {
     match request.method.as_str() {
         lsp_types::request::Completion::METHOD => on_completion_request(context, request),
         lsp_types::request::GotoDefinition::METHOD => {
@@ -193,6 +198,9 @@ fn on_request(context: &Context, request: &Request) {
         }
         lsp_types::request::HoverRequest::METHOD => {
             symbols::on_hover_request(context, request, &context.symbols.lock().unwrap());
+        }
+        lsp_types::request::DocumentSymbolRequest::METHOD => {
+            symbols::on_document_symbol_request(context, symbolicator_runner, request);
         }
         _ => eprintln!("handle request '{}' from client", request.method),
     }

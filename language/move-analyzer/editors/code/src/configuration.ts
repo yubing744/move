@@ -4,6 +4,7 @@
 
 import * as os from 'os';
 import * as vscode from 'vscode';
+import * as Path from 'path';
 
 /**
  * User-defined configuration values, such as those specified in VS Code settings.
@@ -36,6 +37,6 @@ export class Configuration {
         if (path.startsWith('~/')) {
             return os.homedir() + path.slice('~'.length);
         }
-        return path;
+        return Path.resolve(path);
     }
 }
