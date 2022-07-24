@@ -10,7 +10,6 @@
 *.toml text
 *.txt text
 *.yml text
-*.ts eol=lf
 
 # Use Move syntax highlighter for Move IR code
 *.mvir linguist-language=Move
