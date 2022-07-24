@@ -92,7 +92,7 @@
 		"copy-tests-files": "copyfiles \"tests/**/*.move\" \"tests/**/*.exp\" \"tests/**/*.toml\" \"tests/**/*.code-workspace\" out",
 		"pretest": "npm run compile && npm run lint && npm run copy-tests-files",
 		"test": "node ./out/tests/runTests.js",
-		"dev": "npm run pretest && mode=dev node ./out/tests/runTests.js",
+		"dev": "npm run pretest && cross-env mode=dev node ./out/tests/runTests.js",
 		"vscode:prepublish": "npm run pretest",
 		"package": "vsce package -o move-analyzer.vsix",
 		"publish": "npm run pretest && npm run test && vsce publish"
