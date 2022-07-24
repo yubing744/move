@@ -12,6 +12,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.52"
 codespan-reporting = "0.11.1"
+dunce = "1.0.2"
 im = "15.1.0"
 lsp-server = "0.5.1"
 lsp-types = "0.90.1"
@@ -27,3 +28,7 @@ move-compiler = { path = "../move-compiler" }
 move-ir-types = { path = "../move-ir/types" }
 move-package = { path = "../tools/move-package" }
 move-symbol-pool = { path = "../move-symbol-pool" }
+
+[features]
+address20 = ["move-compiler/address20"]
+address32 = ["move-compiler/address32"]

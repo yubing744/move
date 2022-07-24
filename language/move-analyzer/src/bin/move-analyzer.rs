@@ -20,7 +20,6 @@ use std::{
 use move_analyzer::{
     completion::on_completion_request,
     context::Context,
-    events::AnalyzerEvent,
     symbols,
     vfs::{on_text_document_sync_notification, VirtualFileSystem},
 };
@@ -28,7 +27,7 @@ use move_symbol_pool::Symbol;
 use url::Url;
 
 #[derive(Parser)]
-#[clap(author, version, about)]
+#[clap(author, version = "1.0.0", about)]
 struct Options {}
 
 fn main() {
@@ -54,6 +53,12 @@ fn main() {
         files: VirtualFileSystem::default(),
         symbols: Arc::new(Mutex::new(symbols::Symbolicator::empty_symbols())),
     };
+
+    let (id, client_response) = context
+        .connection
+        .initialize_start()
+        .expect("could not start connection initialization");
+
     let capabilities = serde_json::to_value(lsp_types::ServerCapabilities {
         // The server receives notifications from the client as users open, close,
         // and modify documents.
@@ -104,26 +109,41 @@ fn main() {
     })
     .expect("could not serialize server capabilities");
 
-    let client_response: serde_json::Value = context
-        .connection
-        .initialize(capabilities)
-        .expect("could not initialize the connection");
-
-    let initialize_params: lsp_types::InitializeParams =
-        serde_json::from_value(client_response).expect("could not deserialize client capabilities");
-
     let (diag_sender, diag_receiver) = bounded::<Result<BTreeMap<Symbol, Vec<Diagnostic>>>>(0);
-    let (events_sender, events_receiver) = bounded::<Result<AnalyzerEvent>>(0);
-
     let mut symbolicator_runner = symbols::SymbolicatorRunner::idle();
     if symbols::DEFS_AND_REFS_SUPPORT {
-        symbolicator_runner =
-            symbols::SymbolicatorRunner::new(context.symbols.clone(), diag_sender, events_sender);
+        let initialize_params: lsp_types::InitializeParams =
+            serde_json::from_value(client_response)
+                .expect("could not deserialize client capabilities");
 
+        symbolicator_runner =
+            symbols::SymbolicatorRunner::new(context.symbols.clone(), diag_sender);
+
+        // If initialization information from the client contains a path to the directory being
+        // opened, try to initialize symbols before sending response to the client. Do not bother
+        // with diagnostics as they will be recomputed whenever the first source file is opened. The
+        // main reason for this is to enable unit tests that rely on the symbolication information
+        // to be available right after the client is initialized.
         if let Some(uri) = initialize_params.root_uri {
-            symbolicator_runner.run(uri.path());
+            if let Some(p) = symbols::SymbolicatorRunner::root_dir(&uri.to_file_path().unwrap()) {
+                if let Ok((Some(new_symbols), _)) = symbols::Symbolicator::get_symbols(p.as_path())
+                {
+                    let mut old_symbols = context.symbols.lock().unwrap();
+                    (*old_symbols).merge(new_symbols);
+                }
+            }
         }
     };
+
+    context
+        .connection
+        .initialize_finish(
+            id,
+            serde_json::json!({
+                "capabilities": capabilities,
+            }),
+        )
+        .expect("could not finish connection initialization");
 
     loop {
         select! {
@@ -162,26 +182,6 @@ fn main() {
                         }
                     },
                     Err(error) => eprintln!("symbolicator message error: {:?}", error),
-                }
-            },
-            recv(events_receiver) -> event => {
-                match event {
-                    Ok(result) => {
-                        match result {
-                            Ok(event) => {
-                                eprintln!("send analyzer event: {:?}", event);
-                                let notification = Notification::new(lsp_types::notification::TelemetryEvent::METHOD.to_string(), event);
-                                if let Err(err) = context
-                                    .connection
-                                    .sender
-                                    .send(lsp_server::Message::Notification(notification)) {
-                                        eprintln!("could not send events response: {:?}", err);
-                                    };
-                            },
-                            Err(err) => eprintln!("symbolicator event error: {:?}", err),
-                        }
-                    },
-                    Err(error) => eprintln!("symbolicator event error: {:?}", error),
                 }
             },
             recv(context.connection.receiver) -> message => {

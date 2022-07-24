@@ -1,6 +1,5 @@
 /// This module defines a minimal and generic Coin and Balance.
 module NamedAddr::BasicCoin {
-    use std::errors;
     use std::signer;
 
     /// Error codes
@@ -21,8 +20,8 @@ module NamedAddr::BasicCoin {
     /// minting or transferring to the account.
     public fun publish_balance<CoinType>(account: &signer) {
         let empty_coin = Coin<CoinType> { value: 0 };
-        assert!(!exists<Balance<CoinType>>(signer::address_of(account)), errors::already_published(EALREADY_HAS_BALANCE));
-        move_to(account, Balance<CoinType> { coin:  empty_coin });
+        assert!(!exists<Balance<CoinType>>(signer::address_of(account)), EALREADY_HAS_BALANCE);
+        move_to(account, Balance<CoinType> { coin: empty_coin });
     }
 
     /// Mint `amount` tokens to `mint_addr`. This method requires a witness with `CoinType` so that the
@@ -50,7 +49,7 @@ module NamedAddr::BasicCoin {
         deposit<CoinType>(to, check);
     }
 
-    spec transfer{
+    spec transfer {
         let addr_from = signer::address_of(from);
 
         let balance_from = global<Balance<CoinType>>(addr_from).coin.value;

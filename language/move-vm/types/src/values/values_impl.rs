@@ -1138,6 +1138,30 @@ impl VMValueCast<Vec<u8>> for Value {
     }
 }
 
+impl VMValueCast<Vec<Value>> for Value {
+    fn cast(self) -> PartialVMResult<Vec<Value>> {
+        match self.0 {
+            ValueImpl::Container(Container::Vec(c)) => {
+                Ok(take_unique_ownership(c)?.into_iter().map(Value).collect())
+            }
+            ValueImpl::Address(_)
+            | ValueImpl::Bool(_)
+            | ValueImpl::U8(_)
+            | ValueImpl::U64(_)
+            | ValueImpl::U128(_) => Err(PartialVMError::new(StatusCode::INTERNAL_TYPE_ERROR)
+                .with_message(
+                    "cannot cast a specialized vector into a non-specialized one".to_string(),
+                )),
+            v => Err(
+                PartialVMError::new(StatusCode::INTERNAL_TYPE_ERROR).with_message(format!(
+                    "cannot cast {:?} to vector<non-specialized-type>",
+                    v,
+                )),
+            ),
+        }
+    }
+}
+
 impl VMValueCast<SignerRef> for Value {
     fn cast(self) -> PartialVMResult<SignerRef> {
         match self.0 {
@@ -1608,6 +1632,15 @@ impl VectorRef {
                 .with_sub_status(INDEX_OUT_OF_BOUNDS));
         }
         Ok(Value(self.0.borrow_elem(idx)?))
+    }
+
+    /// Returns a Refcell reference to the underlying vector of a `&vector<u8>` value.
+    pub fn as_bytes_ref(&self) -> std::cell::Ref<'_, Vec<u8>> {
+        let c = self.0.container();
+        match c {
+            Container::VecU8(r) => r.borrow(),
+            _ => panic!("can only be called on vector<u8>"),
+        }
     }
 
     pub fn pop(&self, type_param: &Type) -> PartialVMResult<Value> {

@@ -1,7 +1,7 @@
-Command `package build`:
+Command `build`:
 INCLUDING DEPENDENCY MoveStdlib
 BUILDING PackageBasics
-Command `package test --coverage --threads 1`:
+Command `test --coverage --threads 1`:
 INCLUDING DEPENDENCY MoveStdlib
 BUILDING PackageBasics
 Running Move unit tests
@@ -12,28 +12,27 @@ Running Move unit tests
 [ PASS    ] 0x1::AModuleTests::double_zero_zero
 [ PASS    ] 0x1::AModuleTests::double_zero_zero_wrong
 Test result: OK. Total tests: 6; passed: 6; failed: 0
-Command `package coverage summary --summarize-functions`:
+Command `coverage summary --summarize-functions`:
 +-------------------------+
 | Move Coverage Summary   |
 +-------------------------+
 Module 00000000000000000000000000000001::AModule
 	fun double_except_three
-		total: 11
-		covered: 11
+		total: 10
+		covered: 10
 		% coverage: 100.00
 >>> % Module coverage: 100.00
 +-------------------------+
 | % Move Coverage: 100.00  |
 +-------------------------+
-Command `package coverage source --module AModule`:
+Command `coverage source --module AModule`:
 module std::AModule {
-    use std::errors;
 
     /// x was three
     const E_IS_THREE: u64 = 0;
 
     public fun double_except_three(x: u64): u64 {
-        assert!(x != 3, errors::invalid_argument(E_IS_THREE));
+        assert!(x != 3, E_IS_THREE);
         x * x
     }
 
@@ -48,7 +47,7 @@ module std::AModule {
         double_except_three(3);
     }
 }
-Command `package coverage bytecode --module AModule`:
+Command `coverage bytecode --module AModule`:
 // Move bytecode v5
 module 1.AModule {
 
@@ -58,19 +57,18 @@ B0:
 [6]	0: CopyLoc[0](x: u64)
 [6]	1: LdU64(3)
 [6]	2: Neq
-[6]	3: BrTrue(7)
+[6]	3: BrTrue(6)
 B1:
-[2]	4: LdAddr[0](U64: [0, 0, 0, 0, 0, 0, 0, 0])
-[2]	5: Call[1](invalid_argument(u64): u64)
-[2]	6: Abort
+[2]	4: LdConst[0](U64: [0, 0, 0, 0, 0, 0, 0, 0])
+[2]	5: Abort
 B2:
-[4]	7: CopyLoc[0](x: u64)
-[4]	8: MoveLoc[0](x: u64)
-[4]	9: Mul
-[4]	10: Ret
+[4]	6: CopyLoc[0](x: u64)
+[4]	7: MoveLoc[0](x: u64)
+[4]	8: Mul
+[4]	9: Ret
 }
 }
-Command `package disassemble --package MoveStdlib --name signer`:
+Command `disassemble --package MoveStdlib --name signer`:
 // Move bytecode v5
 module 1.signer {
 
@@ -84,8 +82,8 @@ B0:
 }
 native public borrow_address(s: &signer): &address
 }
-Command `package errmap`:
-Command `package info`:
+Command `errmap`:
+Command `info`:
 PackageBasics
 ├─ std:0x1
 └─ MoveStdlib

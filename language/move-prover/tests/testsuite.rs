@@ -142,7 +142,7 @@ fn test_runner_for_feature(path: &Path, feature: &Feature) -> datatest_stable::R
         {
             warn!(
                 "Prover tools are not configured, verification tests will be skipped. \
-        See https://github.com/diem/move/tree/main/language/move-prover/doc/user/install.md \
+        See https://github.com/move-language/move/tree/main/language/move-prover/doc/user/install.md \
         for instructions."
             );
         }
@@ -180,6 +180,7 @@ fn get_flags_and_baseline(
     let dep_flags = vec![
         // stdlib is commonly required
         "--dependency=../move-stdlib/sources",
+        "--dependency=../move-stdlib/nursery/sources",
         // table extension is required
         "--dependency=../extensions/move-table-extension/sources",
     ];
@@ -206,7 +207,7 @@ fn get_flags_and_baseline(
     flags.push("--named-addresses=std=0x1".to_string());
 
     // Add flag assigning an address to stdlib extensions.
-    flags.push("--named-addresses=Extensions=0x2".to_string());
+    flags.push("--named-addresses=extensions=0x2".to_string());
 
     // Add flags specific to the feature.
     flags.extend(feature.flags.iter().map(|f| f.to_string()));
