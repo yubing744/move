@@ -7,6 +7,7 @@ use crate::{
     runtime::VMRuntime,
 };
 use move_binary_format::{
+    compatibility::CompatibilityConfig,
     errors::*,
     file_format::{AbilitySet, LocalIndex},
 };
@@ -20,7 +21,7 @@ use move_core_types::{
 };
 use move_vm_types::{
     data_store::DataStore,
-    gas_schedule::GasStatus,
+    gas::GasMeter,
     loaded_data::runtime_types::{CachedStructIndex, StructType, Type},
 };
 use std::{borrow::Borrow, sync::Arc};
@@ -74,7 +75,7 @@ impl<'r, 'l, S: MoveResolver> Session<'r, 'l, S> {
         function_name: &IdentStr,
         ty_args: Vec<TypeTag>,
         args: Vec<impl Borrow<[u8]>>,
-        gas_status: &mut GasStatus,
+        gas_meter: &mut impl GasMeter,
     ) -> VMResult<SerializedReturnValues> {
         let bypass_declared_entry_check = false;
         self.runtime.execute_function(
@@ -83,7 +84,7 @@ impl<'r, 'l, S: MoveResolver> Session<'r, 'l, S> {
             ty_args,
             args,
             &mut self.data_cache,
-            gas_status,
+            gas_meter,
             &mut self.native_extensions,
             bypass_declared_entry_check,
         )
@@ -96,7 +97,7 @@ impl<'r, 'l, S: MoveResolver> Session<'r, 'l, S> {
         function_name: &IdentStr,
         ty_args: Vec<TypeTag>,
         args: Vec<impl Borrow<[u8]>>,
-        gas_status: &mut GasStatus,
+        gas_meter: &mut impl GasMeter,
     ) -> VMResult<SerializedReturnValues> {
         let bypass_declared_entry_check = true;
         self.runtime.execute_function(
@@ -105,7 +106,7 @@ impl<'r, 'l, S: MoveResolver> Session<'r, 'l, S> {
             ty_args,
             args,
             &mut self.data_cache,
-            gas_status,
+            gas_meter,
             &mut self.native_extensions,
             bypass_declared_entry_check,
         )
@@ -132,14 +133,14 @@ impl<'r, 'l, S: MoveResolver> Session<'r, 'l, S> {
         script: impl Borrow<[u8]>,
         ty_args: Vec<TypeTag>,
         args: Vec<impl Borrow<[u8]>>,
-        gas_status: &mut GasStatus,
+        gas_meter: &mut impl GasMeter,
     ) -> VMResult<SerializedReturnValues> {
         self.runtime.execute_script(
             script,
             ty_args,
             args,
             &mut self.data_cache,
-            gas_status,
+            gas_meter,
             &mut self.native_extensions,
         )
     }
@@ -161,9 +162,9 @@ impl<'r, 'l, S: MoveResolver> Session<'r, 'l, S> {
         &mut self,
         module: Vec<u8>,
         sender: AccountAddress,
-        gas_status: &mut GasStatus,
+        gas_meter: &mut impl GasMeter,
     ) -> VMResult<()> {
-        self.publish_module_bundle(vec![module], sender, gas_status)
+        self.publish_module_bundle(vec![module], sender, gas_meter)
     }
 
     /// Publish a series of modules.
@@ -185,21 +186,47 @@ impl<'r, 'l, S: MoveResolver> Session<'r, 'l, S> {
         &mut self,
         modules: Vec<Vec<u8>>,
         sender: AccountAddress,
-        gas_status: &mut GasStatus,
+        gas_meter: &mut impl GasMeter,
     ) -> VMResult<()> {
-        self.runtime
-            .publish_module_bundle(modules, sender, &mut self.data_cache, gas_status, true)
+        self.runtime.publish_module_bundle(
+            modules,
+            sender,
+            &mut self.data_cache,
+            gas_meter,
+            CompatibilityConfig::full_check(),
+        )
     }
 
-    /// Same like `publish_module_bundle` but relaxes compatibility checks.
+    /// Same like `publish_module_bundle` but with a custom compatibility check.
+    pub fn publish_module_bundle_with_compat_config(
+        &mut self,
+        modules: Vec<Vec<u8>>,
+        sender: AccountAddress,
+        gas_meter: &mut impl GasMeter,
+        compat_config: CompatibilityConfig,
+    ) -> VMResult<()> {
+        self.runtime.publish_module_bundle(
+            modules,
+            sender,
+            &mut self.data_cache,
+            gas_meter,
+            compat_config,
+        )
+    }
+
     pub fn publish_module_bundle_relax_compatibility(
         &mut self,
         modules: Vec<Vec<u8>>,
         sender: AccountAddress,
-        gas_status: &mut GasStatus,
+        gas_meter: &mut impl GasMeter,
     ) -> VMResult<()> {
-        self.runtime
-            .publish_module_bundle(modules, sender, &mut self.data_cache, gas_status, false)
+        self.runtime.publish_module_bundle(
+            modules,
+            sender,
+            &mut self.data_cache,
+            gas_meter,
+            CompatibilityConfig::no_check(),
+        )
     }
 
     pub fn num_mutated_accounts(&self, sender: &AccountAddress) -> u64 {
@@ -269,6 +296,12 @@ impl<'r, 'l, S: MoveResolver> Session<'r, 'l, S> {
         self.runtime
             .loader()
             .get_type_layout(type_tag, &self.data_cache)
+    }
+
+    pub fn get_fully_annotated_type_layout(&self, type_tag: &TypeTag) -> VMResult<MoveTypeLayout> {
+        self.runtime
+            .loader()
+            .get_fully_annotated_type_layout(type_tag, &self.data_cache)
     }
 
     /// Fetch a struct type from cache, if the index is in bounds

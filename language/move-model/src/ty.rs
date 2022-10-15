@@ -200,7 +200,7 @@ impl Type {
     /// Skip reference type.
     pub fn skip_reference(&self) -> &Type {
         if let Type::Reference(_, bt) = self {
-            &*bt
+            bt
         } else {
             self
         }
@@ -636,7 +636,7 @@ impl Substitution {
             (Type::Fun(ts1, r1), Type::Fun(ts2, r2)) => {
                 return Ok(Type::Fun(
                     self.unify_vec(sub_variance, ts1, ts2, "functions")?,
-                    Box::new(self.unify(sub_variance, &*r1, &*r2)?),
+                    Box::new(self.unify(sub_variance, r1, r2)?),
                 ));
             }
             (Type::Struct(m1, s1, ts1), Type::Struct(m2, s2, ts2)) => {
@@ -649,17 +649,13 @@ impl Substitution {
                 }
             }
             (Type::Vector(e1), Type::Vector(e2)) => {
-                return Ok(Type::Vector(Box::new(self.unify(
-                    sub_variance,
-                    &*e1,
-                    &*e2,
-                )?)));
+                return Ok(Type::Vector(Box::new(self.unify(sub_variance, e1, e2)?)));
             }
             (Type::TypeDomain(e1), Type::TypeDomain(e2)) => {
                 return Ok(Type::TypeDomain(Box::new(self.unify(
                     sub_variance,
-                    &*e1,
-                    &*e2,
+                    e1,
+                    e2,
                 )?)));
             }
             _ => {}
@@ -863,8 +859,8 @@ impl TypeUnificationAdapter {
         Self::new(
             std::iter::once(lhs_type),
             std::iter::once(rhs_type),
-            treat_lhs_type_param_as_var.then(|| 0),
-            treat_rhs_type_param_as_var.then(|| 0),
+            treat_lhs_type_param_as_var.then_some(0),
+            treat_rhs_type_param_as_var.then_some(0),
         )
     }
 
@@ -881,8 +877,8 @@ impl TypeUnificationAdapter {
         Self::new(
             lhs_types.iter(),
             rhs_types.iter(),
-            treat_lhs_type_param_as_var.then(|| 0),
-            treat_rhs_type_param_as_var.then(|| 0),
+            treat_lhs_type_param_as_var.then_some(0),
+            treat_rhs_type_param_as_var.then_some(0),
         )
     }
 
@@ -986,9 +982,9 @@ impl TypeInstantiationDerivation {
     ) -> BTreeSet<Type> {
         // progressively increase the boundary
         let treat_lhs_type_param_as_var_after_index =
-            treat_lhs_type_param_as_var.then(|| if target_lhs { target_param_index } else { 0 });
+            treat_lhs_type_param_as_var.then_some(if target_lhs { target_param_index } else { 0 });
         let treat_rhs_type_param_as_var_after_index =
-            treat_rhs_type_param_as_var.then(|| if target_lhs { 0 } else { target_param_index });
+            treat_rhs_type_param_as_var.then_some(if target_lhs { 0 } else { target_param_index });
 
         let mut target_param_insts = BTreeSet::new();
         for t_lhs in lhs_types {

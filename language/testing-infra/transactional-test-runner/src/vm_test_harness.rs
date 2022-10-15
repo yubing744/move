@@ -9,7 +9,9 @@ use crate::{
     tasks::{EmptyCommand, InitCommand, SyntaxChoice, TaskInput},
 };
 use anyhow::{anyhow, Result};
+use clap::Parser;
 use move_binary_format::{
+    compatibility::CompatibilityConfig,
     errors::{Location, VMError, VMResult},
     file_format::CompiledScript,
     CompiledModule,
@@ -34,8 +36,7 @@ use move_vm_runtime::{
     move_vm::MoveVM,
     session::{SerializedReturnValues, Session},
 };
-use move_vm_test_utils::InMemoryStorage;
-use move_vm_types::gas_schedule::GasStatus;
+use move_vm_test_utils::{gas_schedule::GasStatus, InMemoryStorage};
 use once_cell::sync::Lazy;
 
 const STD_ADDR: AccountAddress = AccountAddress::ONE;
@@ -68,9 +69,22 @@ pub fn view_resource_in_move_storage(
     }
 }
 
+#[derive(Debug, Parser)]
+pub struct AdapterPublishArgs {
+    #[clap(long)]
+    /// is skip the struct_and_function_linking compatibility check
+    pub skip_check_struct_and_function_linking: bool,
+    #[clap(long)]
+    /// is skip the struct_layout compatibility check
+    pub skip_check_struct_layout: bool,
+    #[clap(long)]
+    /// is skip the check friend link, if true, treat `friend` as `private`
+    pub skip_check_friend_linking: bool,
+}
+
 impl<'a> MoveTestAdapter<'a> for SimpleVMTestAdapter<'a> {
     type ExtraInitArgs = EmptyCommand;
-    type ExtraPublishArgs = EmptyCommand;
+    type ExtraPublishArgs = AdapterPublishArgs;
     type ExtraValueArgs = ();
     type ExtraRunArgs = EmptyCommand;
     type Subcommand = EmptyCommand;
@@ -148,7 +162,7 @@ impl<'a> MoveTestAdapter<'a> for SimpleVMTestAdapter<'a> {
         module: CompiledModule,
         _named_addr_opt: Option<Identifier>,
         gas_budget: Option<u64>,
-        _extra_args: Self::ExtraPublishArgs,
+        extra_args: Self::ExtraPublishArgs,
     ) -> Result<(Option<String>, CompiledModule)> {
         let mut module_bytes = vec![];
         module.serialize(&mut module_bytes)?;
@@ -156,7 +170,19 @@ impl<'a> MoveTestAdapter<'a> for SimpleVMTestAdapter<'a> {
         let id = module.self_id();
         let sender = *id.address();
         match self.perform_session_action(gas_budget, |session, gas_status| {
-            session.publish_module(module_bytes, sender, gas_status)
+            let compat_config = CompatibilityConfig {
+                check_struct_and_function_linking: !extra_args
+                    .skip_check_struct_and_function_linking,
+                check_struct_layout: !extra_args.skip_check_struct_layout,
+                check_friend_linking: !extra_args.skip_check_friend_linking,
+            };
+
+            session.publish_module_bundle_with_compat_config(
+                vec![module_bytes],
+                sender,
+                gas_status,
+                compat_config,
+            )
         }) {
             Ok(()) => Ok((None, module)),
             Err(e) => Err(anyhow!(
@@ -292,10 +318,15 @@ impl<'a> SimpleVMTestAdapter<'a> {
         f: impl FnOnce(&mut Session<InMemoryStorage>, &mut GasStatus) -> VMResult<Ret>,
     ) -> VMResult<Ret> {
         // start session
-        let vm = MoveVM::new(move_stdlib::natives::all_natives(STD_ADDR)).unwrap();
+        let vm = MoveVM::new(move_stdlib::natives::all_natives(
+            STD_ADDR,
+            // TODO: come up with a suitable gas schedule
+            move_stdlib::natives::GasParameters::zeros(),
+        ))
+        .unwrap();
         let (mut session, mut gas_status) = {
             let gas_status = move_cli::sandbox::utils::get_gas_status(
-                &move_vm_types::gas_schedule::INITIAL_COST_SCHEDULE,
+                &move_vm_test_utils::gas_schedule::INITIAL_COST_SCHEDULE,
                 gas_budget,
             )
             .unwrap();

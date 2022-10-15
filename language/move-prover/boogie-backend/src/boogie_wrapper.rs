@@ -26,8 +26,8 @@ use move_model::{
     ast::TempIndex,
     code_writer::CodeWriter,
     model::{FunId, GlobalEnv, Loc, ModuleId, NodeId, QualifiedId, StructEnv},
+    pragmas::INTRINSIC_TYPE_MAP,
     ty::{PrimitiveType, Type},
-    well_known::TABLE_TABLE,
 };
 use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant};
 
@@ -529,9 +529,18 @@ impl<'env> BoogieWrapper<'env> {
 
             let args = cap.name("args").unwrap().as_str();
             let loc = self.report_error(self.extract_loc(args), self.env.unknown_loc());
-            let execution_trace = self.extract_augmented_trace(out, &mut at);
+            let plain_trace = self.extract_execution_trace(out, &mut at);
+            let mut execution_trace = self.extract_augmented_trace(out, &mut at);
             let mut model = Model::new(self);
-            self.extract_model(&mut model, out, &mut at);
+            if execution_trace.is_empty() {
+                execution_trace.push(TraceEntry::InfoLine(format!(
+                    "Boogie does not return any augmented executed trace. \
+                    See the plain trace below:\n{}",
+                    plain_trace.join("\n")
+                )))
+            } else {
+                self.extract_model(&mut model, out, &mut at);
+            }
 
             if msg != "expected to fail" {
                 // Only add this if it is not a negative test. We still needed to parse it.
@@ -565,7 +574,12 @@ impl<'env> BoogieWrapper<'env> {
 
         if let Some(cap) = MODEL_REGION.captures(&out[*at..]) {
             *at = usize::saturating_add(*at, cap.get(0).unwrap().end());
-            match model.parse(self, cap.name("mod").unwrap().as_str()) {
+
+            // Cuts out the state info block which is not used currently.
+            let re = Regex::new(r"(?m)\*\*\* STATE(?s:.)*?\*\*\* END_STATE\n").unwrap();
+            let remnant = re.replace(cap.name("mod").unwrap().as_str(), "");
+
+            match model.parse(self, remnant.as_ref()) {
                 Ok(_) => {}
                 Err(parse_error) => {
                     let context_module = self
@@ -579,6 +593,27 @@ impl<'env> BoogieWrapper<'env> {
                 }
             }
         }
+    }
+
+    /// Extracts the plain execution trace.
+    fn extract_execution_trace(&self, out: &str, at: &mut usize) -> Vec<String> {
+        static TRACE_START: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r"(?m)^Execution trace:\s*$").unwrap());
+        static TRACE_ENTRY: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"^\s+(?P<name>[^(]+)\((?P<args>[^)]*)\): (?P<value>.*)\n").unwrap()
+        });
+        let mut result = vec![];
+        if let Some(m) = TRACE_START.find(&out[*at..]) {
+            *at = usize::saturating_add(*at, m.end());
+            while let Some(cap) = TRACE_ENTRY.captures(&out[*at..]) {
+                *at = usize::saturating_add(*at, cap.get(0).unwrap().end());
+                let name = cap.name("name").unwrap().as_str();
+                let args = cap.name("args").unwrap().as_str();
+                let value = cap.name("value").unwrap().as_str();
+                result.push(format!("{}({}): {}", name, args, value))
+            }
+        }
+        result
     }
 
     /// Extracts augmented execution trace.
@@ -1045,7 +1080,7 @@ impl ModelValue {
             if args.len() != 2 {
                 return None;
             }
-            let size = (&args[1]).extract_number()?;
+            let size = args[1].extract_number()?;
             let map_key = &args[0];
             let value_array_map = model
                 .vars
@@ -1183,7 +1218,7 @@ impl ModelValue {
             }
         }
 
-        // Travese the update map to obtain the updated value
+        // Traverse the update map to obtain the updated value
         if let Some(value_update_map) = value_update_map_opt {
             for up_k in value_update_map.keys() {
                 if let ModelValue::List(elems) = up_k {
@@ -1382,14 +1417,14 @@ impl ModelValue {
             Type::Vector(param) => self.pretty_vector(wrapper, model, param),
             Type::Struct(module_id, struct_id, params) => {
                 let struct_env = wrapper.env.get_struct_qid(module_id.qualified(*struct_id));
-                if struct_env.is_well_known(TABLE_TABLE) {
+                if struct_env.is_intrinsic_of(INTRINSIC_TYPE_MAP) {
                     self.pretty_table(wrapper, model, &params[0], &params[1])
                 } else {
                     self.pretty_struct(wrapper, model, &struct_env, params)
                 }
             }
             Type::Reference(_, bt) => {
-                Some(PrettyDoc::text("&").append(self.pretty(wrapper, model, &*bt)?))
+                Some(PrettyDoc::text("&").append(self.pretty(wrapper, model, bt)?))
             }
             Type::TypeParameter(_) => {
                 // The value of a generic cannot be easily displayed because we do not know the
@@ -1474,7 +1509,7 @@ impl ModelValue {
             }
             vec![PrettyDoc::text(rep)]
         } else {
-            let struct_name = &boogie_struct_name(&struct_env, inst);
+            let struct_name = &boogie_struct_name(struct_env, inst);
             let values = self
                 .extract_list(struct_name)
                 // It appears sometimes keys are represented witout, sometimes with enclosing
@@ -1682,7 +1717,7 @@ impl<'s> ModelParser<'s> {
 
     fn parse_key(&mut self) -> Result<ModelValue, ModelParseError> {
         let mut comps = vec![];
-        while !self.looking_at("->") {
+        while !self.looking_at("->") && self.at < self.input.len() {
             let value = self.parse_value()?;
             comps.push(value);
         }

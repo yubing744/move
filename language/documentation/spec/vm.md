@@ -75,7 +75,7 @@ pub fn publish_module(
     &mut self,
     module: Vec<u8>,
     sender: AccountAddress,
-    gas_status: &mut GasStatus,
+    gas_status: &mut impl GasMeter,
 ) -> VMResult<()>;
 ```
 
@@ -91,7 +91,7 @@ the module](#References-to-Data-and-Code). If the two addresses do not match, an
 error with `StatusCode::MODULE_ADDRESS_DOES_NOT_MATCH_SENDER` is returned.
 
 * Check that the module is not already published: Code is immutable in
-Move. An attempt to overwrite an exiting module results in an error with
+Move. An attempt to overwrite an existing module results in an error with
 `StatusCode::DUPLICATE_MODULE_NAME`.
 
 * Verify loading: The VM performs [verification](#Verification) of the
@@ -120,7 +120,7 @@ pub fn execute_script(
     ty_args: Vec<TypeTag>,
     args: Vec<Vec<u8>>,
     senders: Vec<AccountAddress>,
-    gas_status: &mut GasStatus,
+    gas_status: &mut impl GasMeter,
 ) -> VMResult<()>;
 ```
 
@@ -170,7 +170,7 @@ pub fn execute_script_function(
     ty_args: Vec<TypeTag>,
     args: Vec<Vec<u8>>,
     senders: Vec<AccountAddress>,
-    gas_status: &mut GasStatus,
+    gas_status: &mut impl GasMeter,
 ) -> VMResult<()>;
 ```
 
@@ -201,7 +201,7 @@ pub fn execute_function(
     function_name: &IdentStr,
     ty_args: Vec<TypeTag>,
     args: Vec<Vec<u8>>,
-    gas_status: &mut GasStatus,
+    gas_status: &mut impl GasMeter,
 ) -> VMResult<()>;
 ```
 

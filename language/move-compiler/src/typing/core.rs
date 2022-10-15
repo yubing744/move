@@ -340,7 +340,7 @@ impl<'env> Context<'env> {
     pub fn get_break_type(&self) -> Option<&Type> {
         match &self.loop_info.0 {
             LoopInfo_::NotInLoop | LoopInfo_::BreakTypeUnknown => None,
-            LoopInfo_::BreakType(t) => Some(&*t),
+            LoopInfo_::BreakType(t) => Some(t),
         }
     }
 
@@ -1010,6 +1010,10 @@ fn solve_builtin_type_constraint(
         )
     };
     match &t.value {
+        // already failed, ignore
+        UnresolvedError => (),
+        // Will fail later in compiling, either through dead code, or unknown type variable
+        Anything => (),
         Apply(abilities_opt, sp!(_, Builtin(sp!(_, b))), args) if builtin_set.contains(b) => {
             if let Some(abilities) = abilities_opt {
                 assert!(

@@ -19,8 +19,8 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-proverOpt:O:model_validate=true",
 ];
 
-const MIN_BOOGIE_VERSION: &str = "2.9.0";
-const MIN_Z3_VERSION: &str = "4.8.9";
+const MIN_BOOGIE_VERSION: &str = "2.15.8";
+const MIN_Z3_VERSION: &str = "4.11.0";
 const MIN_CVC5_VERSION: &str = "0.0.3";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -118,6 +118,8 @@ pub struct BoogieOptions {
     pub z3_trace_file: Option<String>,
     /// Options to define user-custom native funs.
     pub custom_natives: Option<CustomNativeOptions>,
+    /// Number of iterations to unroll loops.
+    pub loop_unroll: Option<u64>,
 }
 
 impl Default for BoogieOptions {
@@ -153,6 +155,7 @@ impl Default for BoogieOptions {
             vector_theory: VectorTheory::BoogieArray,
             z3_trace_file: None,
             custom_natives: None,
+            loop_unroll: None,
         }
     }
 }
@@ -205,6 +208,9 @@ impl BoogieOptions {
                 "-proverOpt:O:smt.QI.LAZY_THRESHOLD={}",
                 self.lazy_threshold
             )]);
+        }
+        if let Some(iters) = self.loop_unroll {
+            add(&[&format!("-loopUnroll:{}", iters)]);
         }
         add(&[&format!(
             "-vcsCores:{}",
@@ -319,6 +325,9 @@ impl BoogieOptions {
                     given,
                     tool
                 ));
+            }
+            if gn > en {
+                break;
             }
         }
         Ok(())

@@ -4,7 +4,7 @@
 
 use crate::{
     logging::expect_no_verification_errors,
-    native_functions::{NativeFunction, NativeFunctions},
+    native_functions::{NativeFunction, NativeFunctions, UnboxedNativeFunction},
     session::LoadedFunctionInstantiation,
 };
 use move_binary_format::{
@@ -20,11 +20,12 @@ use move_binary_format::{
     },
     IndexKind,
 };
-use move_bytecode_verifier::{self, cyclic_dependencies, dependencies};
+use move_bytecode_verifier::{self, cyclic_dependencies, dependencies, VerifierConfig};
 use move_core_types::{
     identifier::{IdentStr, Identifier},
     language_storage::{ModuleId, StructTag, TypeTag},
-    value::{MoveStructLayout, MoveTypeLayout},
+    metadata::Metadata,
+    value::{MoveFieldLayout, MoveStructLayout, MoveTypeLayout},
     vm_status::StatusCode,
 };
 use move_vm_types::{
@@ -216,12 +217,20 @@ impl ModuleCache {
         idx: StructDefinitionIndex,
     ) -> StructType {
         let struct_handle = module.struct_handle_at(struct_def.struct_handle);
+        let field_names = match &struct_def.field_information {
+            StructFieldInformation::Native => vec![],
+            StructFieldInformation::Declared(field_info) => field_info
+                .iter()
+                .map(|f| module.identifier_at(f.name).to_owned())
+                .collect(),
+        };
         let abilities = struct_handle.abilities;
         let name = module.identifier_at(struct_handle.name).to_owned();
         let type_parameters = struct_handle.type_parameters.clone();
         let module = module.self_id();
         StructType {
             fields: vec![],
+            field_names,
             abilities,
             type_parameters,
             name,
@@ -441,16 +450,108 @@ pub(crate) struct Loader {
     module_cache: RwLock<ModuleCache>,
     type_cache: RwLock<TypeCache>,
     natives: NativeFunctions,
+
+    // The below field supports a hack to workaround well-known issues with the
+    // loader cache. This cache is not designed to support module upgrade or deletion.
+    // This leads to situations where the cache does not reflect the state of storage:
+    //
+    // 1. On module upgrade, the upgraded module is in storage, but the old one still in the cache.
+    // 2. On an abandoned code publishing transaction, the cache may contain a module which was
+    //    never committed to storage by the adapter.
+    //
+    // The solution is to add a flag to Loader marking it as 'invalidated'. For scenario (1),
+    // the VM sets the flag itself. For scenario (2), a public API allows the adapter to set
+    // the flag.
+    //
+    // If the cache is invalidated, it can (and must) still be used until there are no more
+    // sessions alive which are derived from a VM with this loader. This is because there are
+    // internal data structures derived from the loader which can become inconsistent. Therefore
+    // the adapter must explicitly call a function to flush the invalidated loader.
+    //
+    // This code (the loader) needs a complete refactoring. The new loader should
+    //
+    // - support upgrade and deletion of modules, while still preserving max cache lookup
+    //   performance. This is essential for a cache like this in a multi-tenant execution
+    //   environment.
+    // - should delegate lifetime ownership to the adapter. Code loading (including verification)
+    //   is a major execution bottleneck. We should be able to reuse a cache for the lifetime of
+    //   the adapter/node, not just a VM or even session (as effectively today).
+    invalidated: RwLock<bool>,
+
+    // Collects the cache hits on module loads. This information can be read and reset by
+    // an adapter to reason about read/write conflicts of code publishing transactions and
+    // other transactions.
+    module_cache_hits: RwLock<BTreeSet<ModuleId>>,
+
+    verifier_config: VerifierConfig,
 }
 
 impl Loader {
-    pub(crate) fn new(natives: NativeFunctions) -> Self {
+    pub(crate) fn new(natives: NativeFunctions, verifier_config: VerifierConfig) -> Self {
         Self {
             scripts: RwLock::new(ScriptCache::new()),
             module_cache: RwLock::new(ModuleCache::new()),
             type_cache: RwLock::new(TypeCache::new()),
             natives,
+            invalidated: RwLock::new(false),
+            module_cache_hits: RwLock::new(BTreeSet::new()),
+            verifier_config,
         }
+    }
+
+    /// Gets and clears module cache hits. A cache hit may also be caused indirectly by
+    /// loading a function or a type. This not only returns the direct hit, but also
+    /// indirect ones, that is all dependencies.
+    pub(crate) fn get_and_clear_module_cache_hits(&self) -> BTreeSet<ModuleId> {
+        let mut result = BTreeSet::new();
+        let hits: BTreeSet<ModuleId> = std::mem::take(&mut self.module_cache_hits.write());
+        for id in hits {
+            self.transitive_dep_closure(&id, &mut result)
+        }
+        result
+    }
+
+    fn transitive_dep_closure(&self, id: &ModuleId, visited: &mut BTreeSet<ModuleId>) {
+        if !visited.insert(id.clone()) {
+            return;
+        }
+        let deps = self
+            .module_cache
+            .read()
+            .modules
+            .get(id)
+            .unwrap()
+            .module
+            .immediate_dependencies();
+        for dep in deps {
+            self.transitive_dep_closure(&dep, visited)
+        }
+    }
+
+    /// Flush this cache if it is marked as invalidated.
+    pub(crate) fn flush_if_invalidated(&self) {
+        let mut invalidated = self.invalidated.write();
+        if *invalidated {
+            *self.scripts.write() = ScriptCache::new();
+            *self.module_cache.write() = ModuleCache::new();
+            *self.type_cache.write() = TypeCache::new();
+            *invalidated = false;
+        }
+    }
+
+    /// Mark this cache as invalidated.
+    pub(crate) fn mark_as_invalid(&self) {
+        *self.invalidated.write() = true;
+    }
+
+    /// Copies metadata out of a modules bytecode if available.
+    pub(crate) fn get_metadata(&self, module: ModuleId, key: &[u8]) -> Option<Metadata> {
+        let cache = self.module_cache.read();
+        cache
+            .modules
+            .get(&module)
+            .and_then(|module| module.module.metadata.iter().find(|md| md.key == key))
+            .cloned()
     }
 
     //
@@ -545,7 +646,7 @@ impl Loader {
     // Script verification steps.
     // See `verify_module()` for module verification steps.
     fn verify_script(&self, script: &CompiledScript) -> VMResult<()> {
-        move_bytecode_verifier::verify_script(script)
+        move_bytecode_verifier::verify_script_with_config(&self.verifier_config, script)
     }
 
     fn verify_script_dependencies(
@@ -670,7 +771,7 @@ impl Loader {
         // module will NOT show up in `module_cache`. In the module republishing case, it means
         // that the old module is still in the `module_cache`, unless a new Loader is created,
         // which means that a new MoveVM instance needs to be created.
-        move_bytecode_verifier::verify_module(module)?;
+        move_bytecode_verifier::verify_module_with_config(&self.verifier_config, module)?;
         self.check_natives(module)?;
 
         let mut visited = BTreeSet::new();
@@ -740,31 +841,34 @@ impl Loader {
         )
     }
 
-    // All native functions must be known to the loader
+    // All native functions must be known to the loader, unless we are compiling with feature
+    // `lazy_natives`.
     fn check_natives(&self, module: &CompiledModule) -> VMResult<()> {
         fn check_natives_impl(loader: &Loader, module: &CompiledModule) -> PartialVMResult<()> {
-            for (idx, native_function) in module
-                .function_defs()
-                .iter()
-                .filter(|fdv| fdv.is_native())
-                .enumerate()
-            {
-                let fh = module.function_handle_at(native_function.function);
-                let mh = module.module_handle_at(fh.module);
-                loader
-                    .natives
-                    .resolve(
-                        module.address_identifier_at(mh.address),
-                        module.identifier_at(mh.name).as_str(),
-                        module.identifier_at(fh.name).as_str(),
-                    )
-                    .ok_or_else(|| {
-                        verification_error(
-                            StatusCode::MISSING_DEPENDENCY,
-                            IndexKind::FunctionHandle,
-                            idx as TableIndex,
+            if !cfg!(feature = "lazy_natives") {
+                for (idx, native_function) in module
+                    .function_defs()
+                    .iter()
+                    .filter(|fdv| fdv.is_native())
+                    .enumerate()
+                {
+                    let fh = module.function_handle_at(native_function.function);
+                    let mh = module.module_handle_at(fh.module);
+                    loader
+                        .natives
+                        .resolve(
+                            module.address_identifier_at(mh.address),
+                            module.identifier_at(mh.name).as_str(),
+                            module.identifier_at(fh.name).as_str(),
                         )
-                    })?;
+                        .ok_or_else(|| {
+                            verification_error(
+                                StatusCode::MISSING_DEPENDENCY,
+                                IndexKind::FunctionHandle,
+                                idx as TableIndex,
+                            )
+                        })?;
+                }
             }
             // TODO: fix check and error code if we leave something around for native structs.
             // For now this generates the only error test cases care about...
@@ -844,6 +948,7 @@ impl Loader {
     ) -> VMResult<Arc<Module>> {
         // if the module is already in the code cache, load the cached version
         if let Some(cached) = self.module_cache.read().module_at(id) {
+            self.module_cache_hits.write().insert(id.clone());
             return Ok(cached);
         }
 
@@ -895,7 +1000,8 @@ impl Loader {
             .map_err(expect_no_verification_errors)?;
 
         // bytecode verifier checks that can be performed with the module itself
-        move_bytecode_verifier::verify_module(&module).map_err(expect_no_verification_errors)?;
+        move_bytecode_verifier::verify_module_with_config(&self.verifier_config, &module)
+            .map_err(expect_no_verification_errors)?;
         self.check_natives(&module)
             .map_err(expect_no_verification_errors)?;
         Ok(module)
@@ -1250,6 +1356,7 @@ impl<'a> Resolver<'a> {
         Ok(instantiation)
     }
 
+    #[allow(unused)]
     pub(crate) fn type_params_count(&self, idx: FunctionInstantiationIndex) -> usize {
         let func_inst = match &self.binary {
             BinaryType::Module(module) => module.function_instantiation_at(idx.0),
@@ -1339,6 +1446,13 @@ impl<'a> Resolver<'a> {
 
     pub(crate) fn type_to_type_layout(&self, ty: &Type) -> PartialVMResult<MoveTypeLayout> {
         self.loader.type_to_type_layout(ty)
+    }
+
+    pub(crate) fn type_to_fully_annotated_layout(
+        &self,
+        ty: &Type,
+    ) -> PartialVMResult<MoveTypeLayout> {
+        self.loader.type_to_fully_annotated_layout(ty)
     }
 
     // get the loader
@@ -1744,7 +1858,7 @@ impl Script {
         let type_parameters = script.type_parameters.clone();
         // TODO: main does not have a name. Revisit.
         let name = Identifier::new("main").unwrap();
-        let native = None; // Script entries cannot be native
+        let (native, def_is_native) = (None, false); // Script entries cannot be native
         let main: Arc<Function> = Arc::new(Function {
             file_format_version: script.version(),
             index: FunctionDefinitionIndex(0),
@@ -1754,6 +1868,7 @@ impl Script {
             locals,
             type_parameters,
             native,
+            def_is_native,
             scope,
             name,
         });
@@ -1845,6 +1960,7 @@ pub(crate) struct Function {
     locals: Signature,
     type_parameters: Vec<AbilitySet>,
     native: Option<NativeFunction>,
+    def_is_native: bool,
     scope: Scope,
     name: Identifier,
 }
@@ -1859,14 +1975,17 @@ impl Function {
         let handle = module.function_handle_at(def.function);
         let name = module.identifier_at(handle.name).to_owned();
         let module_id = module.self_id();
-        let native = if def.is_native() {
-            natives.resolve(
-                module_id.address(),
-                module_id.name().as_str(),
-                name.as_str(),
+        let (native, def_is_native) = if def.is_native() {
+            (
+                natives.resolve(
+                    module_id.address(),
+                    module_id.name().as_str(),
+                    name.as_str(),
+                ),
+                true,
             )
         } else {
-            None
+            (None, false)
         };
         let scope = Scope::Module(module_id);
         let parameters = module.signature_at(handle.parameters).clone();
@@ -1896,6 +2015,7 @@ impl Function {
             locals,
             type_parameters,
             native,
+            def_is_native,
             scope,
             name,
         }
@@ -1938,6 +2058,10 @@ impl Function {
         self.parameters.len()
     }
 
+    pub(crate) fn return_type_count(&self) -> usize {
+        self.return_.len()
+    }
+
     pub(crate) fn name(&self) -> &str {
         self.name.as_str()
     }
@@ -1968,14 +2092,24 @@ impl Function {
     }
 
     pub(crate) fn is_native(&self) -> bool {
-        self.native.is_some()
+        self.def_is_native
     }
 
-    pub(crate) fn get_native(&self) -> PartialVMResult<NativeFunction> {
-        self.native.ok_or_else(|| {
-            PartialVMError::new(StatusCode::UNREACHABLE)
-                .with_message("Missing Native Function".to_string())
-        })
+    pub(crate) fn get_native(&self) -> PartialVMResult<&UnboxedNativeFunction> {
+        if cfg!(feature = "lazy_natives") {
+            // If lazy_natives is configured, this is a MISSING_DEPENDENCY error, as we skip
+            // checking those at module loading time.
+            self.native.as_deref().ok_or_else(|| {
+                PartialVMError::new(StatusCode::MISSING_DEPENDENCY)
+                    .with_message(format!("Missing Native Function `{}`", self.name))
+            })
+        } else {
+            // Otherwise this error should not happen, hence UNREACHABLE
+            self.native.as_deref().ok_or_else(|| {
+                PartialVMError::new(StatusCode::UNREACHABLE)
+                    .with_message("Missing Native Function".to_string())
+            })
+        }
     }
 }
 
@@ -2036,6 +2170,7 @@ struct FieldInstantiation {
 struct StructInfo {
     struct_tag: Option<StructTag>,
     struct_layout: Option<MoveStructLayout>,
+    annotated_struct_layout: Option<MoveStructLayout>,
 }
 
 impl StructInfo {
@@ -2043,6 +2178,7 @@ impl StructInfo {
         Self {
             struct_tag: None,
             struct_layout: None,
+            annotated_struct_layout: None,
         }
     }
 }
@@ -2188,11 +2324,100 @@ impl Loader {
         })
     }
 
+    fn struct_gidx_to_fully_annotated_layout(
+        &self,
+        gidx: CachedStructIndex,
+        ty_args: &[Type],
+        depth: usize,
+    ) -> PartialVMResult<MoveStructLayout> {
+        if let Some(struct_map) = self.type_cache.read().structs.get(&gidx) {
+            if let Some(struct_info) = struct_map.get(ty_args) {
+                if let Some(layout) = &struct_info.annotated_struct_layout {
+                    return Ok(layout.clone());
+                }
+            }
+        }
+
+        let struct_type = self.module_cache.read().struct_at(gidx);
+        if struct_type.fields.len() != struct_type.field_names.len() {
+            return Err(
+                PartialVMError::new(StatusCode::UNKNOWN_INVARIANT_VIOLATION_ERROR).with_message(
+                    "Field types did not match the length of field names in loaded struct"
+                        .to_owned(),
+                ),
+            );
+        }
+        let struct_tag = self.struct_gidx_to_type_tag(gidx, ty_args)?;
+        let field_layouts = struct_type
+            .field_names
+            .iter()
+            .zip(&struct_type.fields)
+            .map(|(n, ty)| {
+                let ty = ty.subst(ty_args)?;
+                let l = self.type_to_fully_annotated_layout_impl(&ty, depth + 1)?;
+                Ok(MoveFieldLayout::new(n.clone(), l))
+            })
+            .collect::<PartialVMResult<Vec<_>>>()?;
+        let struct_layout = MoveStructLayout::with_types(struct_tag, field_layouts);
+
+        self.type_cache
+            .write()
+            .structs
+            .entry(gidx)
+            .or_insert_with(HashMap::new)
+            .entry(ty_args.to_vec())
+            .or_insert_with(StructInfo::new)
+            .annotated_struct_layout = Some(struct_layout.clone());
+
+        Ok(struct_layout)
+    }
+
+    fn type_to_fully_annotated_layout_impl(
+        &self,
+        ty: &Type,
+        depth: usize,
+    ) -> PartialVMResult<MoveTypeLayout> {
+        if depth > VALUE_DEPTH_MAX {
+            return Err(PartialVMError::new(StatusCode::VM_MAX_VALUE_DEPTH_REACHED));
+        }
+        Ok(match ty {
+            Type::Bool => MoveTypeLayout::Bool,
+            Type::U8 => MoveTypeLayout::U8,
+            Type::U64 => MoveTypeLayout::U64,
+            Type::U128 => MoveTypeLayout::U128,
+            Type::Address => MoveTypeLayout::Address,
+            Type::Signer => MoveTypeLayout::Signer,
+            Type::Vector(ty) => MoveTypeLayout::Vector(Box::new(
+                self.type_to_fully_annotated_layout_impl(ty, depth + 1)?,
+            )),
+            Type::Struct(gidx) => MoveTypeLayout::Struct(
+                self.struct_gidx_to_fully_annotated_layout(*gidx, &[], depth)?,
+            ),
+            Type::StructInstantiation(gidx, ty_args) => MoveTypeLayout::Struct(
+                self.struct_gidx_to_fully_annotated_layout(*gidx, ty_args, depth)?,
+            ),
+            Type::Reference(_) | Type::MutableReference(_) | Type::TyParam(_) => {
+                return Err(
+                    PartialVMError::new(StatusCode::UNKNOWN_INVARIANT_VIOLATION_ERROR)
+                        .with_message(format!("no type layout for {:?}", ty)),
+                )
+            }
+        })
+    }
+
     pub(crate) fn type_to_type_tag(&self, ty: &Type) -> PartialVMResult<TypeTag> {
         self.type_to_type_tag_impl(ty)
     }
+
     pub(crate) fn type_to_type_layout(&self, ty: &Type) -> PartialVMResult<MoveTypeLayout> {
         self.type_to_type_layout_impl(ty, 1)
+    }
+
+    pub(crate) fn type_to_fully_annotated_layout(
+        &self,
+        ty: &Type,
+    ) -> PartialVMResult<MoveTypeLayout> {
+        self.type_to_fully_annotated_layout_impl(ty, 1)
     }
 }
 
@@ -2205,6 +2430,16 @@ impl Loader {
     ) -> VMResult<MoveTypeLayout> {
         let ty = self.load_type(type_tag, move_storage)?;
         self.type_to_type_layout(&ty)
+            .map_err(|e| e.finish(Location::Undefined))
+    }
+
+    pub(crate) fn get_fully_annotated_type_layout(
+        &self,
+        type_tag: &TypeTag,
+        move_storage: &impl DataStore,
+    ) -> VMResult<MoveTypeLayout> {
+        let ty = self.load_type(type_tag, move_storage)?;
+        self.type_to_fully_annotated_layout(&ty)
             .map_err(|e| e.finish(Location::Undefined))
     }
 }

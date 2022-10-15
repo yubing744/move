@@ -38,7 +38,7 @@ use std::{fmt, fmt::Formatter};
 
 /// A record of the glocals and locals accessed by the current procedure + the address values stored
 /// by locals or globals
-#[derive(Debug, Clone, Eq, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialOrd, PartialEq, Default)]
 pub struct ReadWriteSetState {
     /// memory accessed so far
     accesses: AccessPathTrie<Access>,
@@ -521,6 +521,9 @@ impl<'a> TransferFunctions for ReadWriteSetAnalysis<'a> {
                 OpaqueCallBegin(_, _, _) | OpaqueCallEnd(_, _, _) => {
                     // skip
                 }
+                Uninit => {
+                    // do nothing, this marks a reference (args[0]) but the ref is only defined later
+                }
                 Destroy => state.locals.remove_local(args[0], func_env),
                 Eq | Neq => {
                     // These operations read reference types passed to them. Add Access::Read's for both operands
@@ -816,15 +819,6 @@ impl<'a> fmt::Display for ReadWriteSetStateDisplay<'a> {
             writeln!(f, "{}: {}", path.display(self.env), v.display(self.env)).unwrap();
         });
         Ok(())
-    }
-}
-
-impl Default for ReadWriteSetState {
-    fn default() -> Self {
-        Self {
-            accesses: AccessPathTrie::default(),
-            locals: AccessPathTrie::default(),
-        }
     }
 }
 

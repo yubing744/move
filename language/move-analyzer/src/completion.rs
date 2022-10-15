@@ -2,15 +2,16 @@
 // Copyright (c) The Move Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::context::Context;
+use crate::{context::Context, symbols::Symbols};
 use lsp_server::Request;
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionParams, Position};
 use move_command_line_common::files::FileHash;
 use move_compiler::parser::{
-    keywords::{BUILTINS, CONTEXTUAL_KEYWORDS, KEYWORDS},
+    keywords::{BUILTINS, CONTEXTUAL_KEYWORDS, KEYWORDS, PRIMITIVE_TYPES},
     lexer::{Lexer, Tok},
 };
-use std::collections::HashSet;
+use move_symbol_pool::Symbol;
+use std::{collections::HashSet, path::PathBuf};
 
 /// Constructs an `lsp_types::CompletionItem` with the given `label` and `kind`.
 fn completion_item(label: &str, kind: CompletionItemKind) -> CompletionItem {
@@ -31,6 +32,7 @@ fn keywords() -> Vec<CompletionItem> {
     KEYWORDS
         .iter()
         .chain(CONTEXTUAL_KEYWORDS.iter())
+        .chain(PRIMITIVE_TYPES.iter())
         .map(|label| {
             let kind = if label == &"copy" || label == &"move" {
                 CompletionItemKind::Operator
@@ -39,6 +41,14 @@ fn keywords() -> Vec<CompletionItem> {
             };
             completion_item(label, kind)
         })
+        .collect()
+}
+
+/// Return a list of completion items of Move's primitive types
+fn primitive_types() -> Vec<CompletionItem> {
+    PRIMITIVE_TYPES
+        .iter()
+        .map(|label| completion_item(label, CompletionItemKind::Keyword))
         .collect()
 }
 
@@ -59,7 +69,7 @@ fn builtins() -> Vec<CompletionItem> {
 /// server did not initialize with a response indicating it's capable of providing completions. In
 /// the future, the server should be modified to return semantically valid completion items, not
 /// simple textual suggestions.
-fn identifiers(buffer: &str) -> Vec<CompletionItem> {
+fn identifiers(buffer: &str, symbols: &Symbols, path: &PathBuf) -> Vec<CompletionItem> {
     let mut lexer = Lexer::new(buffer, FileHash::new(buffer));
     if lexer.advance().is_err() {
         return vec![];
@@ -83,13 +93,26 @@ fn identifiers(buffer: &str) -> Vec<CompletionItem> {
         }
     }
 
+    let mods_opt = symbols.file_mods().get(path);
+
     // The completion item kind "text" indicates that the item is based on simple textual matching,
     // not any deeper semantic analysis.
-    let items = ids
-        .iter()
-        .map(|label| completion_item(label, CompletionItemKind::Text))
-        .collect();
-    items
+    ids.iter()
+        .map(|label| {
+            if let Some(mods) = mods_opt {
+                if mods
+                    .iter()
+                    .any(|m| m.functions().contains_key(&Symbol::from(*label)))
+                {
+                    completion_item(label, CompletionItemKind::Function)
+                } else {
+                    completion_item(label, CompletionItemKind::Text)
+                }
+            } else {
+                completion_item(label, CompletionItemKind::Text)
+            }
+        })
+        .collect()
 }
 
 /// Returns the token corresponding to the "trigger character" that precedes the user's cursor,
@@ -122,7 +145,7 @@ fn get_cursor_token(buffer: &str, position: &Position) -> Option<Tok> {
 /// Sends the given connection a response to a completion request.
 ///
 /// The completions returned depend upon where the user's cursor is positioned.
-pub fn on_completion_request(context: &Context, request: &Request) {
+pub fn on_completion_request(context: &Context, request: &Request, symbols: &Symbols) {
     eprintln!("handling completion request");
     let parameters = serde_json::from_value::<CompletionParams>(request.params.clone())
         .expect("could not deserialize completion request");
@@ -148,9 +171,7 @@ pub fn on_completion_request(context: &Context, request: &Request) {
     let mut items = vec![];
     match cursor {
         Some(Tok::Colon) => {
-            // If the user's cursor is positioned after a single `:`, do not provide any completion
-            // items at all -- this is a "mis-fire" of the "trigger character" `:`.
-            return;
+            items.extend_from_slice(&primitive_types());
         }
         Some(Tok::Period) | Some(Tok::ColonColon) => {
             // `.` or `::` must be followed by identifiers, which are added to the completion items
@@ -165,7 +186,7 @@ pub fn on_completion_request(context: &Context, request: &Request) {
     }
 
     if let Some(buffer) = &buffer {
-        let identifiers = identifiers(buffer);
+        let identifiers = identifiers(buffer, symbols, &path);
         items.extend_from_slice(&identifiers);
     }
 

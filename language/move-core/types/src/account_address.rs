@@ -45,6 +45,15 @@ impl AccountAddress {
         Self(buf)
     }
 
+    /// Return a canonical string representation of the address
+    /// Addresses are hex-encoded lowercase values of length ADDRESS_LENGTH (16, 20, or 32 depending on the Move platform)
+    /// e.g., 0000000000000000000000000000000a, *not* 0x0000000000000000000000000000000a, 0xa, or 0xA
+    /// Note: this function is guaranteed to be stable, and this is suitable for use inside
+    /// Move native functions or the VM.
+    pub fn to_canonical_string(&self) -> String {
+        hex::encode(&self.0)
+    }
+
     pub fn short_str_lossless(&self) -> String {
         let hex_str = hex::encode(&self.0).trim_start_matches('0').to_string();
         if hex_str.is_empty() {
@@ -119,13 +128,13 @@ impl std::ops::Deref for AccountAddress {
 
 impl fmt::Display for AccountAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:X}", self)
+        write!(f, "{:x}", self)
     }
 }
 
 impl fmt::Debug for AccountAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:X}", self)
+        write!(f, "{:x}", self)
     }
 }
 
@@ -223,7 +232,12 @@ impl FromStr for AccountAddress {
     type Err = AccountAddressParseError;
 
     fn from_str(s: &str) -> Result<Self, AccountAddressParseError> {
-        Self::from_hex(s)
+        // Accept 0xADDRESS or ADDRESS
+        if let Ok(address) = AccountAddress::from_hex_literal(s) {
+            Ok(address)
+        } else {
+            Self::from_hex(s)
+        }
     }
 }
 
@@ -234,7 +248,7 @@ impl<'de> Deserialize<'de> for AccountAddress {
     {
         if deserializer.is_human_readable() {
             let s = <String>::deserialize(deserializer)?;
-            AccountAddress::from_hex(s).map_err(D::Error::custom)
+            AccountAddress::from_str(&s).map_err(D::Error::custom)
         } else {
             // In order to preserve the Serde data model and help analysis tools,
             // make sure to wrap our value in a container with the same name
@@ -295,8 +309,8 @@ mod tests {
 
         let address = AccountAddress::from_hex(hex).unwrap();
 
-        assert_eq!(format!("{}", address), upper_hex);
-        assert_eq!(format!("{:?}", address), upper_hex);
+        assert_eq!(format!("{}", address), hex);
+        assert_eq!(format!("{:?}", address), hex);
         assert_eq!(format!("{:X}", address), upper_hex);
         assert_eq!(format!("{:x}", address), hex);
 

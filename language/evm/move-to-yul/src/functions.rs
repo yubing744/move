@@ -562,6 +562,7 @@ impl<'a> FunctionGenerator<'a> {
                     | EventStoreDiverge
                     | OpaqueCallBegin(_, _, _)
                     | OpaqueCallEnd(_, _, _)
+                    | Uninit
                     | Havoc(_)
                     | Stop
                     | TraceGlobalMem(_) => {}
@@ -613,6 +614,7 @@ impl<'a> FunctionGenerator<'a> {
                 format!("0x{}", a.to_str_radix(16))
             }
             Constant::ByteArray(_) => "".to_string(),
+            Constant::AddressArray(_) => "".to_string(),
         };
         if !val_str.is_empty() {
             emitln!(ctx.writer, "{} := {}", dest, val_str);
