@@ -1559,8 +1559,6 @@ pub enum Bytecode {
     VecSwap(SignatureIndex),
 }
 
-pub const NUMBER_OF_NATIVE_FUNCTIONS: usize = 18;
-
 impl ::std::fmt::Debug for Bytecode {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match self {
@@ -1670,11 +1668,16 @@ impl Bytecode {
     /// Return the successor offsets of this bytecode instruction.
     pub fn get_successors(pc: CodeOffset, code: &[Bytecode]) -> Vec<CodeOffset> {
         assert!(
-            // The program counter could be added to at most twice and must remain
-            // within the bounds of the code.
-            pc <= u16::max_value() - 2 && (pc as usize) < code.len(),
+            // The program counter must remain within the bounds of the code
+            pc < u16::MAX && (pc as usize) < code.len(),
             "Program counter out of bounds"
         );
+
+        // Return early to prevent overflow if pc is hiting the end of max number of instructions allowed (u16::MAX).
+        if pc > u16::max_value() - 2 {
+            return vec![];
+        }
+
         let bytecode = &code[pc as usize];
         let mut v = vec![];
 

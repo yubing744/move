@@ -26,17 +26,15 @@ use std::{
     sync::Mutex,
 };
 
+/// The default value bounding the number of instructions executed in a test.
+const DEFAULT_EXECUTION_BOUND: u64 = 100_000;
+
 #[derive(Debug, Parser, Clone)]
 #[clap(author, version, about)]
 pub struct UnitTestingConfig {
     /// Bound the number of instructions that can be executed by any one test.
-    #[clap(
-        name = "instructions",
-        default_value = "5000",
-        short = 'i',
-        long = "instructions"
-    )]
-    pub instruction_execution_bound: u64,
+    #[clap(name = "instructions", short = 'i', long = "instructions")]
+    pub instruction_execution_bound: Option<u64>,
 
     /// A filter string to determine which unit tests to run
     #[clap(name = "filter", short = 'f', long = "filter")]
@@ -81,6 +79,10 @@ pub struct UnitTestingConfig {
     )]
     pub report_stacktrace_on_abort: bool,
 
+    /// Ignore compiler's warning, and continue run tests
+    #[clap(name = "ignore_compile_warnings", long = "ignore_compile_warnings")]
+    pub ignore_compile_warnings: bool,
+
     /// Named address mapping
     #[clap(
         name = "NAMED_ADDRESSES",
@@ -108,6 +110,10 @@ pub struct UnitTestingConfig {
     #[clap(short = 'v', long = "verbose")]
     pub verbose: bool,
 
+    /// Whether the test output need to be printed out.
+    #[clap(short = 'v', long = "verbose")]
+    pub report_writeset: bool,
+
     /// Use the EVM-based execution backend.
     /// Does not work with --stackless.
     #[cfg(feature = "evm-backend")]
@@ -127,18 +133,20 @@ impl UnitTestingConfig {
     /// Create a unit testing config for use with `register_move_unit_tests`
     pub fn default_with_bound(bound: Option<u64>) -> Self {
         Self {
-            instruction_execution_bound: bound.unwrap_or(5000),
+            instruction_execution_bound: bound.or(Some(DEFAULT_EXECUTION_BOUND)),
             filter: None,
             num_threads: 8,
             report_statistics: false,
             report_storage_on_error: false,
             report_stacktrace_on_abort: false,
+            ignore_compile_warnings: false,
             source_files: vec![],
             dep_files: vec![],
             check_stackless_vm: false,
             verbose: false,
             list: false,
             named_address_values: vec![],
+            report_writeset: false,
 
             #[cfg(feature = "evm-backend")]
             evm: false,
@@ -173,7 +181,13 @@ impl UnitTestingConfig {
         let compilation_env = compiler.compilation_env();
         let test_plan = unit_test::plan_builder::construct_test_plan(compilation_env, None, &cfgir);
 
-        if let Err(diags) = compilation_env.check_diags_at_or_above_severity(Severity::Warning) {
+        if let Err(diags) =
+            compilation_env.check_diags_at_or_above_severity(if self.ignore_compile_warnings {
+                Severity::NonblockingError
+            } else {
+                Severity::Warning
+            })
+        {
             diagnostics::report_diagnostics(&files, diags);
         }
 
@@ -225,7 +239,8 @@ impl UnitTestingConfig {
 
         writeln!(shared_writer.lock().unwrap(), "Running Move unit tests")?;
         let mut test_runner = TestRunner::new(
-            self.instruction_execution_bound,
+            self.instruction_execution_bound
+                .unwrap_or(DEFAULT_EXECUTION_BOUND),
             self.num_threads,
             self.check_stackless_vm,
             self.verbose,
@@ -234,6 +249,7 @@ impl UnitTestingConfig {
             test_plan,
             native_function_table,
             verify_and_create_named_address_mapping(self.named_address_values.clone()).unwrap(),
+            self.report_writeset,
             #[cfg(feature = "evm-backend")]
             self.evm,
         )
@@ -248,9 +264,13 @@ impl UnitTestingConfig {
             test_results.report_statistics(&shared_writer)?;
         }
 
-        let all_tests_passed = test_results.summarize(&shared_writer)?;
+        if self.report_writeset {
+            test_results.report_goldens(&shared_writer)?;
+        }
+
+        let ok = test_results.summarize(&shared_writer)?;
 
         let writer = shared_writer.into_inner().unwrap();
-        Ok((writer, all_tests_passed))
+        Ok((writer, ok))
     }
 }

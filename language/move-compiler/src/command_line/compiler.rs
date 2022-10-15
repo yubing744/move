@@ -14,7 +14,7 @@ use crate::{
         CompilationEnv, Flags, IndexedPackagePath, NamedAddressMap, NamedAddressMaps,
         NumericalAddress, PackagePaths,
     },
-    to_bytecode, typing, unit_test,
+    to_bytecode, typing, unit_test, verification,
 };
 use move_command_line_common::files::{
     extension_equals, find_filenames, MOVE_COMPILED_EXTENSION, MOVE_EXTENSION, SOURCE_MAP_EXTENSION,
@@ -441,22 +441,16 @@ pub fn construct_pre_compiled_lib<Paths: Into<Symbol>, NamedAddress: Into<Symbol
     let mut cfgir = None;
     let mut compiled = None;
 
-    let save_result = |cur: &PassResult, env: &CompilationEnv| match cur {
+    let save_result = |cur: &PassResult, _env: &CompilationEnv| match cur {
         PassResult::Parser(prog) => {
             assert!(parser.is_none());
             parser = Some(prog.clone())
         }
         PassResult::Expansion(eprog) => {
-            if env.has_diags() {
-                return;
-            }
             assert!(expansion.is_none());
             expansion = Some(eprog.clone())
         }
         PassResult::Naming(nprog) => {
-            if env.has_diags() {
-                return;
-            }
             assert!(naming.is_none());
             naming = Some(nprog.clone())
         }
@@ -465,9 +459,6 @@ pub fn construct_pre_compiled_lib<Paths: Into<Symbol>, NamedAddress: Into<Symbol
             typing = Some(tprog.clone())
         }
         PassResult::HLIR(hprog) => {
-            if env.has_diags() {
-                return;
-            }
             assert!(hlir.is_none());
             hlir = Some(hprog.clone());
         }
@@ -762,6 +753,7 @@ fn run(
         PassResult::Parser(prog) => {
             let prog = parser::merge_spec_modules::program(compilation_env, prog);
             let prog = unit_test::filter_test_members::program(compilation_env, prog);
+            let prog = verification::ast_filter::program(compilation_env, prog);
             let eprog = expansion::translate::program(compilation_env, pre_compiled_lib, prog);
             compilation_env.check_diags_at_or_above_severity(Severity::Bug)?;
             run(

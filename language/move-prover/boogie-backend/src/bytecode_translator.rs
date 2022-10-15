@@ -6,45 +6,40 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use codespan::LineIndex;
 use itertools::Itertools;
 #[allow(unused_imports)]
 use log::{debug, info, log, warn, Level};
 
 use move_model::{
+    ast::{TempIndex, TraceKind},
     code_writer::CodeWriter,
     emit, emitln,
-    model::{GlobalEnv, QualifiedInstId, StructEnv, StructId},
+    model::{GlobalEnv, Loc, NodeId, QualifiedInstId, StructEnv, StructId},
     pragmas::{ADDITION_OVERFLOW_UNCHECKED_PRAGMA, SEED_PRAGMA, TIMEOUT_PRAGMA},
-    ty::{PrimitiveType, Type},
+    ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
+    well_known::{TYPE_INFO_MOVE, TYPE_NAME_MOVE},
 };
 use move_stackless_bytecode::{
     function_target::FunctionTarget,
-    function_target_pipeline::{FunctionTargetsHolder, VerificationFlavor},
+    function_target_pipeline::{FunctionTargetsHolder, FunctionVariant, VerificationFlavor},
     mono_analysis,
-    stackless_bytecode::{BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, Operation},
+    stackless_bytecode::{
+        AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, Operation, PropKind,
+    },
 };
 
 use crate::{
     boogie_helpers::{
-        boogie_byte_blob, boogie_debug_track_abort, boogie_debug_track_local,
+        boogie_address_blob, boogie_byte_blob, boogie_debug_track_abort, boogie_debug_track_local,
         boogie_debug_track_return, boogie_equality_for_type, boogie_field_sel, boogie_field_update,
         boogie_function_name, boogie_make_vec_from_strings, boogie_modifies_memory_name,
-        boogie_resource_memory_name, boogie_struct_name, boogie_temp, boogie_type,
-        boogie_type_param, boogie_type_suffix, boogie_type_suffix_for_struct,
-        boogie_well_formed_check, boogie_well_formed_expr,
+        boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name,
+        boogie_struct_name, boogie_temp, boogie_type, boogie_type_param, boogie_type_suffix,
+        boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr,
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
-};
-use codespan::LineIndex;
-use move_model::{
-    ast::{TempIndex, TraceKind},
-    model::{Loc, NodeId},
-    ty::{TypeDisplayContext, BOOL_TYPE},
-};
-use move_stackless_bytecode::{
-    function_target_pipeline::FunctionVariant,
-    stackless_bytecode::{AbortAction, PropKind},
 };
 
 pub struct BoogieTranslator<'env> {
@@ -114,6 +109,13 @@ impl<'env> BoogieTranslator<'env> {
                 suffix,
                 param_type,
             );
+
+            // declare free variables to represent the type info for this type
+            emitln!(writer, "var {}_name: Vec int;", param_type);
+            emitln!(writer, "var {}_is_struct: bool;", param_type);
+            emitln!(writer, "var {}_account_address: int;", param_type);
+            emitln!(writer, "var {}_module_name: Vec int;", param_type);
+            emitln!(writer, "var {}_struct_name: Vec int;", param_type);
         }
         emitln!(writer);
 
@@ -623,13 +625,6 @@ impl<'env> FunctionTranslator<'env> {
             emitln!(writer, "$t{} := _$t{};", idx, idx);
         }
 
-        // Initialize mutations to have empty paths so $IsParentMutation works correctly.
-        for i in num_args..fun_target.get_local_count() {
-            if self.get_local_type(i).is_mutable_reference() {
-                emitln!(writer, "assume IsEmptyVec(p#$Mutation($t{}));", i);
-            }
-        }
-
         // Initial assumptions
         if variant.is_verified() {
             self.translate_verify_entry_assumptions(fun_target);
@@ -748,6 +743,11 @@ impl<'env> FunctionTranslator<'env> {
             *last_tracked_loc = None;
         }
         self.track_loc(last_tracked_loc, &loc);
+        if matches!(bytecode, Label(_, _)) {
+            // For labels, retrack the location after the label itself, so
+            // the information will not be missing if we jump to this label
+            *last_tracked_loc = None;
+        }
 
         // Helper function to get a a string for a local
         let str_local = |idx: usize| format!("$t{}", idx);
@@ -851,6 +851,7 @@ impl<'env> FunctionTranslator<'env> {
                     Constant::U256(num) => num.to_string(),
                     Constant::Address(val) => val.to_string(),
                     Constant::ByteArray(val) => boogie_byte_blob(options, val),
+                    Constant::AddressArray(val) => boogie_address_blob(options, val),
                 };
                 let dest_str = str_local(*dest);
                 emitln!(writer, "{} := {};", dest_str, value);
@@ -887,7 +888,15 @@ impl<'env> FunctionTranslator<'env> {
                                     _ => unreachable!(),
                                 })
                                 .collect_vec();
-                            if edge_pattern.len() == 1 {
+                            if edge_pattern.is_empty() {
+                                emitln!(
+                                    writer,
+                                    "{} := $IsSameMutation({}, {});",
+                                    str_local(dests[0]),
+                                    str_local(*parent),
+                                    src_str
+                                );
+                            } else if edge_pattern.len() == 1 {
                                 emitln!(
                                     writer,
                                     "{} := $IsParentMutation({}, {}, {});",
@@ -944,7 +953,8 @@ impl<'env> FunctionTranslator<'env> {
                     }
                     Function(mid, fid, inst) => {
                         let inst = &self.inst_slice(inst);
-                        let callee_env = env.get_module(*mid).into_function(*fid);
+                        let module_env = env.get_module(*mid);
+                        let callee_env = module_env.get_function(*fid);
 
                         let args_str = srcs.iter().cloned().map(str_local).join(", ");
                         let dest_str = dests
@@ -961,22 +971,70 @@ impl<'env> FunctionTranslator<'env> {
                             )
                             .join(",");
 
-                        if dest_str.is_empty() {
-                            emitln!(
-                                writer,
-                                "call {}({});",
-                                boogie_function_name(&callee_env, inst),
-                                args_str
+                        // special casing for type reflection
+                        let mut processed = false;
+
+                        // TODO(mengxu): change it to a better address name instead of extlib
+                        if env.get_extlib_address() == *module_env.get_name().addr() {
+                            let qualified_name = format!(
+                                "{}::{}",
+                                module_env.get_name().name().display(env.symbol_pool()),
+                                callee_env.get_name().display(env.symbol_pool()),
                             );
-                        } else {
-                            emitln!(
-                                writer,
-                                "call {} := {}({});",
-                                dest_str,
-                                boogie_function_name(&callee_env, inst),
-                                args_str
-                            );
+                            if qualified_name == TYPE_NAME_MOVE {
+                                assert_eq!(inst.len(), 1);
+                                if dest_str.is_empty() {
+                                    emitln!(
+                                        writer,
+                                        "{}",
+                                        boogie_reflection_type_name(env, &inst[0])
+                                    );
+                                } else {
+                                    emitln!(
+                                        writer,
+                                        "{} := {};",
+                                        dest_str,
+                                        boogie_reflection_type_name(env, &inst[0])
+                                    );
+                                }
+                                processed = true;
+                            } else if qualified_name == TYPE_INFO_MOVE {
+                                assert_eq!(inst.len(), 1);
+                                let (flag, info) = boogie_reflection_type_info(env, &inst[0]);
+                                emitln!(writer, "if (!{}) {{", flag);
+                                writer.with_indent(|| emitln!(writer, "call $ExecFailureAbort();"));
+                                emitln!(writer, "}");
+                                if !dest_str.is_empty() {
+                                    emitln!(writer, "else {");
+                                    writer.with_indent(|| {
+                                        emitln!(writer, "{} := {};", dest_str, info)
+                                    });
+                                    emitln!(writer, "}");
+                                }
+                                processed = true;
+                            }
                         }
+
+                        // regular path
+                        if !processed {
+                            if dest_str.is_empty() {
+                                emitln!(
+                                    writer,
+                                    "call {}({});",
+                                    boogie_function_name(&callee_env, inst),
+                                    args_str
+                                );
+                            } else {
+                                emitln!(
+                                    writer,
+                                    "call {} := {}({});",
+                                    dest_str,
+                                    boogie_function_name(&callee_env, inst),
+                                    args_str
+                                );
+                            }
+                        }
+
                         // Clear the last track location after function call, as the call inserted
                         // location tracks before it returns.
                         *last_tracked_loc = None;
@@ -1160,29 +1218,29 @@ impl<'env> FunctionTranslator<'env> {
                         emitln!(writer, "}");
                     }
                     Havoc(HavocKind::Value) | Havoc(HavocKind::MutationAll) => {
-                        let src_str = str_local(srcs[0]);
-                        emitln!(writer, "havoc {};", src_str);
+                        let var_str = str_local(dests[0]);
+                        emitln!(writer, "havoc {};", var_str);
                         // Insert a WellFormed check
-                        let ty = &self.get_local_type(srcs[0]);
-                        let check = boogie_well_formed_check(env, &src_str, ty);
+                        let ty = &self.get_local_type(dests[0]);
+                        let check = boogie_well_formed_check(env, &var_str, ty);
                         if !check.is_empty() {
                             emitln!(writer, &check);
                         }
                     }
                     Havoc(HavocKind::MutationValue) => {
-                        let ty = &self.get_local_type(srcs[0]);
-                        let src_str = str_local(srcs[0]);
+                        let ty = &self.get_local_type(dests[0]);
+                        let var_str = str_local(dests[0]);
                         let temp_str = boogie_temp(env, ty.skip_reference(), 0);
                         emitln!(writer, "havoc {};", temp_str);
                         emitln!(
                             writer,
                             "{} := $UpdateMutation({}, {});",
-                            src_str,
-                            src_str,
+                            var_str,
+                            var_str,
                             temp_str
                         );
                         // Insert a WellFormed check
-                        let check = boogie_well_formed_check(env, &src_str, ty);
+                        let check = boogie_well_formed_check(env, &var_str, ty);
                         if !check.is_empty() {
                             emitln!(writer, &check);
                         }
@@ -1439,6 +1497,13 @@ impl<'env> FunctionTranslator<'env> {
                             bytecode
                         );
                     }
+                    Uninit => {
+                        emitln!(
+                            writer,
+                            "assume l#$Mutation($t{}) == $Uninitialized();",
+                            srcs[0]
+                        );
+                    }
                     Destroy => {}
                     TraceLocal(idx) => {
                         self.track_local(*idx, srcs[0]);
@@ -1451,14 +1516,6 @@ impl<'env> FunctionTranslator<'env> {
                     EmitEvent => {
                         let msg = srcs[0];
                         let handle = srcs[1];
-                        let translate_local = |idx: usize| {
-                            let ty = &self.get_local_type(idx);
-                            if ty.is_mutable_reference() {
-                                format!("$Dereference({})", str_local(idx))
-                            } else {
-                                str_local(idx)
-                            }
-                        };
                         let suffix = boogie_type_suffix(env, &self.get_local_type(msg));
                         emit!(
                             writer,
@@ -1466,7 +1523,7 @@ impl<'env> FunctionTranslator<'env> {
                             if srcs.len() > 2 { "Cond" } else { "" },
                             suffix
                         );
-                        emit!(writer, "{}, {}", translate_local(handle), str_local(msg));
+                        emit!(writer, "{}, {}", str_local(handle), str_local(msg));
                         if srcs.len() > 2 {
                             emit!(writer, ", {}", str_local(srcs[2]));
                         }
@@ -1606,7 +1663,7 @@ impl<'env> FunctionTranslator<'env> {
                     let field_env = &struct_env.get_field_by_offset(*offset);
                     let sel_fun = boogie_field_sel(field_env, &memory.inst);
                     let new_dest = format!("{}({})", sel_fun, (*mk_dest)());
-                    let new_dest_ty = &self.inst(&field_env.get_type());
+                    let new_dest_ty = &field_env.get_type().instantiate(&memory.inst);
                     let mut new_dest_needed = false;
                     let new_src = self.translate_write_back_update(
                         new_dest_ty,
@@ -1793,11 +1850,11 @@ impl<'env> FunctionTranslator<'env> {
         };
         for bc in &fun_target.data.code {
             match bc {
-                Call(_, _, oper, srcs, ..) => match oper {
+                Call(_, dests, oper, srcs, ..) => match oper {
                     TraceExp(_, id) => need(&self.inst(&env.get_node_type(*id)), 1),
                     TraceReturn(idx) => need(&self.inst(fun_target.get_return_type(*idx)), 1),
                     TraceLocal(_) => need(&self.get_local_type(srcs[0]), 1),
-                    Havoc(HavocKind::MutationValue) => need(&self.get_local_type(srcs[0]), 1),
+                    Havoc(HavocKind::MutationValue) => need(&self.get_local_type(dests[0]), 1),
                     _ => {}
                 },
                 Prop(_, PropKind::Modifies, exp) => {

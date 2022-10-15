@@ -7,13 +7,14 @@ repository = "https://github.com/diem/diem"
 homepage = "https://diem.com"
 license = "Apache-2.0"
 publish = false
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 clap = { version = "3.1.8", features = ["derive"] }
 move-command-line-common = { path = "../../move-command-line-common" }
 move-core-types = { path = "../../move-core/types" }
-bcs = "0.1.2"
+
+bcs.workspace = true
 
 [features]
 default = []

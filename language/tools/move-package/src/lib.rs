@@ -5,6 +5,7 @@
 mod package_lock;
 
 pub mod compilation;
+pub mod package_hooks;
 pub mod resolution;
 pub mod source_package;
 
@@ -89,7 +90,7 @@ impl Architecture {
     }
 }
 
-#[derive(Debug, Parser, Clone, Serialize, Deserialize, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Parser, Clone, Serialize, Deserialize, Eq, PartialEq, PartialOrd, Default)]
 #[clap(author, version, about)]
 pub struct BuildConfig {
     /// Compile in 'dev' mode. The 'dev-addresses' and 'dev-dependencies' fields will be used if
@@ -129,22 +130,10 @@ pub struct BuildConfig {
     /// Only fetch dependency repos to MOVE_HOME
     #[clap(long = "fetch-deps-only", global = true)]
     pub fetch_deps_only: bool,
-}
 
-impl Default for BuildConfig {
-    fn default() -> Self {
-        Self {
-            dev_mode: false,
-            test_mode: false,
-            generate_docs: false,
-            generate_abis: false,
-            install_dir: None,
-            force_recompilation: false,
-            additional_named_addresses: BTreeMap::new(),
-            architecture: None,
-            fetch_deps_only: false,
-        }
-    }
+    /// Skip fetching latest git dependencies
+    #[clap(long = "skip-fetch-latest-git-deps", global = true)]
+    pub skip_fetch_latest_git_deps: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]

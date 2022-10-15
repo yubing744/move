@@ -12,6 +12,7 @@ ResolutionGraph {
         additional_named_addresses: {},
         architecture: None,
         fetch_deps_only: false,
+        skip_fetch_latest_git_deps: false,
     },
     root_package: SourceManifest {
         package: PackageInfo {
@@ -23,6 +24,7 @@ ResolutionGraph {
             ),
             authors: [],
             license: None,
+            custom_properties: {},
         },
         addresses: None,
         dev_address_assignments: None,
@@ -40,6 +42,7 @@ ResolutionGraph {
                 version: None,
                 digest: None,
                 git_info: None,
+                node_info: None,
             },
         },
         dev_dependencies: {},
@@ -71,6 +74,7 @@ ResolutionGraph {
                     ),
                     authors: [],
                     license: None,
+                    custom_properties: {},
                 },
                 addresses: Some(
                     {
@@ -103,6 +107,7 @@ ResolutionGraph {
                     ),
                     authors: [],
                     license: None,
+                    custom_properties: {},
                 },
                 addresses: None,
                 dev_address_assignments: None,
@@ -120,6 +125,7 @@ ResolutionGraph {
                         version: None,
                         digest: None,
                         git_info: None,
+                        node_info: None,
                     },
                 },
                 dev_dependencies: {},

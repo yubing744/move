@@ -5,11 +5,15 @@
 use crate::{
     account_address::AccountAddress,
     identifier::{IdentStr, Identifier},
+    parser::{parse_struct_tag, parse_type_tag},
 };
 #[cfg(any(test, feature = "fuzzing"))]
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 
 pub const CODE_TAG: u8 = 0;
 pub const RESOURCE_TAG: u8 = 1;
@@ -38,12 +42,45 @@ pub enum TypeTag {
     Struct(StructTag),
 }
 
+impl TypeTag {
+    /// Return a canonical string representation of the type. All types are represented
+    /// using their source syntax:
+    /// "u8", "u64", "u128", "bool", "address", "vector", "signer" for ground types.
+    /// Struct types are represented as fully qualified type names; e.g.
+    /// `00000000000000000000000000000001::string::String` or
+    /// `0000000000000000000000000000000a::module_name1::type_name1<0000000000000000000000000000000a::module_name2::type_name2<u64>>`
+    /// Addresses are hex-encoded lowercase values of length ADDRESS_LENGTH (16, 20, or 32 depending on the Move platform)
+    /// Note: this function is guaranteed to be stable, and this is suitable for use inside
+    /// Move native functions or the VM. By contrast, the `Display` implementation is subject
+    /// to change and should not be used inside stable code.
+    pub fn to_canonical_string(&self) -> String {
+        use TypeTag::*;
+        match self {
+            Bool => "bool".to_owned(),
+            U8 => "u8".to_owned(),
+            U64 => "u64".to_owned(),
+            U128 => "u128".to_owned(),
+            Address => "address".to_owned(),
+            Signer => "signer".to_owned(),
+            Vector(t) => format!("vector<{}>", t.to_canonical_string()),
+            Struct(s) => s.to_canonical_string(),
+        }
+    }
+}
+
+impl FromStr for TypeTag {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_type_tag(s)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Hash, Eq, Clone, PartialOrd, Ord)]
 pub struct StructTag {
     pub address: AccountAddress,
     pub module: Identifier,
     pub name: Identifier,
-    // TODO: rename to "type_args" (or better "ty_args"?)
     // alias for compatibility with old json serialized data.
     #[serde(rename = "type_args", alias = "type_params")]
     pub type_params: Vec<TypeTag>,
@@ -59,9 +96,44 @@ impl StructTag {
     pub fn module_id(&self) -> ModuleId {
         ModuleId::new(self.address, self.module.to_owned())
     }
+
+    /// Return a canonical string representation of the struct.
+    /// Struct types are represented as fully qualified type names; e.g.
+    /// `00000000000000000000000000000001::string::String` or
+    /// `0000000000000000000000000000000a::module_name1::type_name1<0000000000000000000000000000000a::module_name2::type_name2<u64>>`
+    /// Addresses are hex-encoded lowercase values of length ADDRESS_LENGTH (16, 20, or 32 depending on the Move platform)
+    /// Note: this function is guaranteed to be stable, and this is suitable for use inside
+    /// Move native functions or the VM. By contrast, the `Display` implementation is subject
+    /// to change and should not be used inside stable code.
+    pub fn to_canonical_string(&self) -> String {
+        let mut generics = String::new();
+        if let Some(first_ty) = self.type_params.first() {
+            generics.push('<');
+            generics.push_str(&first_ty.to_canonical_string());
+            for ty in self.type_params.iter().skip(1) {
+                generics.push_str(&ty.to_canonical_string())
+            }
+            generics.push('>');
+        }
+        format!(
+            "{}::{}::{}{}",
+            self.address.to_canonical_string(),
+            self.module,
+            self.name,
+            generics
+        )
+    }
 }
 
-/// Represents the intitial key into global storage where we first index by the address, and then
+impl FromStr for StructTag {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_struct_tag(s)
+    }
+}
+
+/// Represents the initial key into global storage where we first index by the address, and then
 /// the struct tag
 #[derive(Serialize, Deserialize, Debug, PartialEq, Hash, Eq, Clone, PartialOrd, Ord)]
 pub struct ResourceKey {

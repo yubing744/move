@@ -93,6 +93,7 @@ pub enum Constant {
     U256(U256),
     Address(BigUint),
     ByteArray(Vec<u8>),
+    AddressArray(Vec<BigUint>),
 }
 
 /// An operation -- target of a call. This contains user functions, builtin functions, and
@@ -128,6 +129,7 @@ pub enum Operation {
     GetGlobal(ModuleId, StructId, Vec<Type>),
 
     // Builtins
+    Uninit,
     Destroy,
     ReadRef,
     WriteRef,
@@ -199,6 +201,7 @@ impl Operation {
             Operation::BorrowGlobal(_, _, _) => true,
             Operation::GetField(_, _, _, _) => false,
             Operation::GetGlobal(_, _, _) => true,
+            Operation::Uninit => false,
             Operation::Destroy => false,
             Operation::ReadRef => false,
             Operation::WriteRef => false,
@@ -969,6 +972,9 @@ impl<'env> fmt::Display for OperationDisplay<'env> {
             }
 
             // Builtins
+            Uninit => {
+                write!(f, "uninit")?;
+            }
             Destroy => {
                 write!(f, "destroy")?;
             }
@@ -1117,6 +1123,13 @@ impl fmt::Display for Constant {
             U256(x) => write!(f, "{}", x)?,
             Address(x) => write!(f, "0x{}", x.to_str_radix(16))?,
             ByteArray(x) => write!(f, "{:?}", x)?,
+            AddressArray(x) => write!(
+                f,
+                "{:?}",
+                x.iter()
+                    .map(|v| format!("0x{}", v.to_str_radix(16)))
+                    .collect_vec()
+            )?,
         }
         Ok(())
     }

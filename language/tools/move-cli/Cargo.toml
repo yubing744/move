@@ -7,7 +7,7 @@ repository = "https://github.com/diem/diem"
 homepage = "https://diem.com"
 license = "Apache-2.0"
 publish = false
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0.52"
@@ -21,9 +21,15 @@ tempfile = "3.2.0"
 walkdir = "2.3.1"
 codespan-reporting = "0.11.1"
 itertools = "0.10.0"
-bcs = "0.1.2"
+serde_json = "1.0"
+toml_edit =  { version = "0.14.3", features = ["easy"] }
+reqwest = { version = "0.11.1", features = ["blocking", "json"] }
+
+bcs.workspace = true
+
 move-bytecode-verifier = { path = "../../move-bytecode-verifier" }
 move-disassembler = { path = "../move-disassembler" }
+move-docgen = { path = "../../move-prover/move-docgen" }
 move-command-line-common = { path = "../../move-command-line-common" }
 move-bytecode-utils = { path = "../move-bytecode-utils" }
 move-coverage = { path = "../move-coverage" }
@@ -35,6 +41,7 @@ move-table-extension = { path = "../../extensions/move-table-extension", optiona
 move-symbol-pool = { path = "../../move-symbol-pool" }
 move-vm-types = { path = "../../move-vm/types" }
 move-vm-runtime = { path = "../../move-vm/runtime", features = ["debugging"] }
+move-vm-test-utils = { path = "../../move-vm/test-utils" }
 read-write-set = { path = "../read-write-set" }
 read-write-set-dynamic = { path = "../read-write-set/dynamic" }
 move-resource-viewer = { path = "../move-resource-viewer" }
@@ -48,6 +55,7 @@ move-bytecode-viewer = { path = "../move-bytecode-viewer" }
 
 [dev-dependencies]
 datatest-stable = "0.1.1"
+httpmock = "0.6.6"
 
 [[bin]]
 name = "move"

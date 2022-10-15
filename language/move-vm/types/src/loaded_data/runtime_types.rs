@@ -6,13 +6,17 @@ use move_binary_format::{
     errors::{PartialVMError, PartialVMResult},
     file_format::{AbilitySet, StructDefinitionIndex, StructTypeParameter},
 };
-use move_core_types::{identifier::Identifier, language_storage::ModuleId, vm_status::StatusCode};
+use move_core_types::{
+    gas_algebra::AbstractMemorySize, identifier::Identifier, language_storage::ModuleId,
+    vm_status::StatusCode,
+};
 
 pub const TYPE_DEPTH_MAX: usize = 256;
 
 #[derive(Debug, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StructType {
     pub fields: Vec<Type>,
+    pub field_names: Vec<Identifier>,
     pub abilities: AbilitySet,
     pub type_parameters: Vec<StructTypeParameter>,
     pub name: Identifier,
@@ -97,5 +101,27 @@ impl Type {
             },
             1,
         )
+    }
+
+    #[allow(deprecated)]
+    const LEGACY_BASE_MEMORY_SIZE: AbstractMemorySize = AbstractMemorySize::new(1);
+
+    /// Returns the abstract memory size the data structure occupies.
+    ///
+    /// This kept only for legacy reasons.
+    /// New applications should not use this.
+    pub fn size(&self) -> AbstractMemorySize {
+        use Type::*;
+
+        match self {
+            TyParam(_) | Bool | U8 | U64 | U128 | Address | Signer => Self::LEGACY_BASE_MEMORY_SIZE,
+            Vector(ty) | Reference(ty) | MutableReference(ty) => {
+                Self::LEGACY_BASE_MEMORY_SIZE + ty.size()
+            }
+            Struct(_) => Self::LEGACY_BASE_MEMORY_SIZE,
+            StructInstantiation(_, tys) => tys
+                .iter()
+                .fold(Self::LEGACY_BASE_MEMORY_SIZE, |acc, ty| acc + ty.size()),
+        }
     }
 }
