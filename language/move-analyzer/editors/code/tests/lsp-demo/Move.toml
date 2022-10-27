@@ -2,8 +2,8 @@
 name = "Symbols"
 version = "0.0.1"
 
-[dependencies]
-MoveStdlib = { local = "../../../../../../move-stdlib/", addr_subst = { "std" = "0x1" } }
-
 [addresses]
 Symbols = "0xCAFE"
+
+[dependencies]
+StarcoinFramework = {git = "https://github.com/starcoinorg/starcoin-framework.git", rev="cf1deda180af40a8b3e26c0c7b548c4c290cd7e7"}
