@@ -690,7 +690,22 @@ impl Symbolicator {
             // start with empty diagnostics for all files and replace them with actual diagnostics
             // only for files that have failures/warnings so that diagnostics for all other files
             // (that no longer have failures/warnings) are reset
-            ide_diagnostics.extend(lsp_diagnostics);
+            for (key, value) in lsp_diagnostics {
+                let mut diags:Vec<Diagnostic> = vec![];
+                
+                for diag in value {
+                    if diag.message.contains("'public(script)' is deprecated") { // skip public(script) warning for starcoin chain
+                        continue;
+                    }
+
+                    diags.push(diag);
+                }
+
+                if diags.len() > 0 {
+                    ide_diagnostics.insert(key, diags);
+                }
+            }
+
             if failure {
                 // just return diagnostics as we don't have typed AST that we can use to compute
                 // symbolication information
