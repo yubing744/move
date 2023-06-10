@@ -10,6 +10,7 @@ use crate::{
 #[cfg(any(test, feature = "fuzzing"))]
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DeserializeAs, SerializeAs};
 use std::{
     fmt::{Display, Formatter},
     str::FromStr,
@@ -92,6 +93,8 @@ pub struct StructTag {
     pub address: AccountAddress,
     pub module: Identifier,
     pub name: Identifier,
+    // alias for compatibility with old json serialized data.
+    #[serde_as(as = "Vec<serde_with::TransparentNewtype<_>>")]
     // alias for compatibility with old json serialized data.
     #[serde(rename = "type_args", alias = "type_params")]
     pub type_params: Vec<TypeTag>,
